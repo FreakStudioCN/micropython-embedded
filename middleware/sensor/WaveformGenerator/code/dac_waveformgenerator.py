@@ -4,7 +4,7 @@
 # @Author  : 李清水            
 # @File    : dac_waveformgenerator.py       
 # @Description : 通用波形发生器类，支持任意位数DAC，手动配置分辨率/写入方法，生成正弦波、三角波、方波
-# 这部分代码由 leeqingshui 开发，采用CC BY-NC 4.0许可协议
+# 这部分代码由 leeqingshui 开发，采用MIT许可协议
 
 # ======================================== 导入相关模块 =========================================
 import math
