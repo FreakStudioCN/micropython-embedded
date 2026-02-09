@@ -1,0 +1,28 @@
+{
+  "name": "SimpleOLEDMenu",
+  "version": "1.0.0",
+  "description": "A MicroPython library to SimpleOLEDMenu",
+  "author": "leeqingshui",
+  "author_email": "1069653183@qq.com",
+  "url": "https://github.com/FreakStudioCN/micropython-embedded",
+  "urls": [
+    ["menu.py", "github:FreakStudioCN/micropython-embedded/middleware/display/SimpleOLEDMenu/code/menu.py"],
+    ["pcf8575.py", "github:FreakStudioCN/micropython-embedded/middleware/display/SimpleOLEDMenu/code/pcf8575.py"],
+    ["SSD1306.py", "github:FreakStudioCN/micropython-embedded/middleware/display/SimpleOLEDMenu/code/SSD1306.py"]
+
+  ],
+  "deps": [
+ ],
+  "long_description": "A MicroPython library to SimpleOLEDMenu ",
+  "long_description_content_type": "text/markdown",
+  "classifiers": [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent"
+  ],
+  "python_requires": ">=3.12",
+  "extras_require": {
+    "micropython": ["machine", "time"]
+  }
+}

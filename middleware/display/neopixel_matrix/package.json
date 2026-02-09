@@ -1,0 +1,25 @@
+{
+  "name": "neopixel_matrix",
+  "version": "1.0.0",
+  "description": "A MicroPython library to control neopixel_matrix",
+  "author": "leeqingshui",
+  "author_email": "1069653183@qq.com",
+  "url": "https://github.com/FreakStudioCN/micropython-embedded",
+  "urls": [
+    ["neopixel_matrix.py", "github:FreakStudioCN/micropython-embedded/middleware/display/neopixel_matrix/code/neopixel_matrix.py"]
+  ],
+  "deps": [
+ ],
+  "long_description": "A MicroPython library to control neopixel_matrix ",
+  "long_description_content_type": "text/markdown",
+  "classifiers": [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent"
+  ],
+  "python_requires": ">=3.12",
+  "extras_require": {
+    "micropython": ["machine", "time"]
+  }
+}

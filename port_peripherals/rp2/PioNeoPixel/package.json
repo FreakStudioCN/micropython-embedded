@@ -1,0 +1,26 @@
+{
+  "name": "PioNeoPixel",
+  "version": "1.0.0",
+  "description": "A MicroPython library to PioNeoPixel",
+  "author": "leeqingshui",
+  "author_email": "1069653183@qq.com",
+  "url": "https://github.com/FreakStudioCN/micropython-embedded",
+  "urls": [
+    ["ws2812_driver.py", "github:FreakStudioCN/micropython-embedded/port_peripherals/rp2/PioNeoPixel/code/ws2812_driver.py"]
+
+  ],
+  "deps": [
+ ],
+  "long_description": "A MicroPython library to PioNeoPixel",
+  "long_description_content_type": "text/markdown",
+  "classifiers": [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent"
+  ],
+  "python_requires": ">=3.12",
+  "extras_require": {
+    "micropython": ["machine", "time"]
+  }
+}
