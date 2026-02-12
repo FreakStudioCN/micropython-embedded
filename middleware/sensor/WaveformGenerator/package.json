@@ -3,26 +3,25 @@
   "version": "1.0.0",
   "description": "A MicroPython library to WaveformGenerator",
   "author": "leeqingshui",
-  "author_email": "1069653183@qq.com",
-  "url": "https://github.com/FreakStudioCN/micropython-embedded",
+  "license": "MIT",
+  "chips": "all",
+  "fw": "all",
+  "_comments": {
+    "chips": "该包支持运行的芯片型号，all表示无芯片限制",
+    "fw": "该包依赖的特定固件如ulab、lvgl,all表示无固件依赖"
+  },
   "urls": [
-    ["dac_waveformgenerator.py", "github:FreakStudioCN/micropython-embedded/middleware/sensor/WaveformGenerator/code/dac_waveformgenerator.py"],
-    ["ds3502.py", "github:FreakStudioCN/micropython-embedded/middleware/sensor/WaveformGenerator/code/ds3502.py"],
-    ["mcp4725.py", "github:FreakStudioCN/micropython-embedded/middleware/sensor/WaveformGenerator/code/mcp4725.py"]
-
-  ],
-  "deps": [
- ],
-  "long_description": "A MicroPython library to WaveformGenerator ",
-  "long_description_content_type": "text/markdown",
-  "classifiers": [
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "License :: Other/Proprietary License",
-    "Operating System :: OS Independent"
-  ],
-  "python_requires": ">=3.12",
-  "extras_require": {
-    "micropython": ["machine", "time"]
-  }
+    [
+      "dac_waveformgenerator.py",
+      "code/dac_waveformgenerator.py"
+    ],
+    [
+      "ds3502.py",
+      "code/ds3502.py"
+    ],
+    [
+      "mcp4725.py",
+      "code/mcp4725.py"
+    ]
+  ]
 }
