@@ -1,10 +1,10 @@
 {
-  "name": "TimerScheduler",
+  "name": "DMA_ADC_RP2040",
   "version": "1.0.0",
-  "description": "A MicroPython library to TimerScheduler",
+  "description": "A MicroPython library to DMA_ADC",
   "author": "leeqingshui",
   "license": "MIT",
-  "chips": "all",
+  "chips": "rp2040",
   "fw": "all",
   "_comments": {
     "chips": "该包支持运行的芯片型号，all表示无芯片限制",
@@ -12,8 +12,12 @@
   },
   "urls": [
     [
-      "Scheduler.py",
-      "code/Scheduler.py"
+      "dma_adc_trans.py",
+      "code/dma_adc_trans.py"
+    ],
+    [
+      "dma_uart_tx.py",
+      "code/dma_uart_tx.py"
     ]
   ]
 }

@@ -1,10 +1,10 @@
 {
-  "name": "TimerScheduler",
+  "name": "PIO_UART_TX_RP2040",
   "version": "1.0.0",
-  "description": "A MicroPython library to TimerScheduler",
+  "description": "A MicroPython library to PIO_UART_TX",
   "author": "leeqingshui",
   "license": "MIT",
-  "chips": "all",
+  "chips": "rp2040",
   "fw": "all",
   "_comments": {
     "chips": "该包支持运行的芯片型号，all表示无芯片限制",
@@ -12,8 +12,8 @@
   },
   "urls": [
     [
-      "Scheduler.py",
-      "code/Scheduler.py"
+      "pio_uart_tx.py",
+      "code/pio_uart_tx.py"
     ]
   ]
 }

@@ -3,26 +3,25 @@
   "version": "1.0.0",
   "description": "A MicroPython library to SimpleOLEDMenu",
   "author": "leeqingshui",
-  "author_email": "1069653183@qq.com",
-  "url": "https://github.com/FreakStudioCN/micropython-embedded",
+  "license": "MIT",
+  "chips": "all",
+  "fw": "all",
+  "_comments": {
+    "chips": "该包支持运行的芯片型号，all表示无芯片限制",
+    "fw": "该包依赖的特定固件如ulab、lvgl,all表示无固件依赖"
+  },
   "urls": [
-    ["menu.py", "github:FreakStudioCN/micropython-embedded/middleware/display/SimpleOLEDMenu/code/menu.py"],
-    ["pcf8575.py", "github:FreakStudioCN/micropython-embedded/middleware/display/SimpleOLEDMenu/code/pcf8575.py"],
-    ["SSD1306.py", "github:FreakStudioCN/micropython-embedded/middleware/display/SimpleOLEDMenu/code/SSD1306.py"]
-
-  ],
-  "deps": [
- ],
-  "long_description": "A MicroPython library to SimpleOLEDMenu ",
-  "long_description_content_type": "text/markdown",
-  "classifiers": [
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "License :: Other/Proprietary License",
-    "Operating System :: OS Independent"
-  ],
-  "python_requires": ">=3.12",
-  "extras_require": {
-    "micropython": ["machine", "time"]
-  }
+    [
+      "menu.py",
+      "code/menu.py"
+    ],
+    [
+      "pcf8575.py",
+      "code/pcf8575.py"
+    ],
+    [
+      "SSD1306.py",
+      "code/SSD1306.py"
+    ]
+  ]
 }
