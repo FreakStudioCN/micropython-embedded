@@ -1,22 +1,25 @@
 # Python env   : MicroPython v1.23.0
-# -*- coding: utf-8 -*-        
-# @Time    : 2024/7/28 下午1:55   
-# @Author  : 李清水            
-# @File    : main.py       
+# -*- coding: utf-8 -*-
+# @Time    : 2024/7/28 下午1:55
+# @Author  : 李清水
+# @File    : main.py
 # @Description : PIO类实验，在PIO程序中实现UART串口通信
 
 # ======================================== 导入相关模块 ========================================
 
 # 导入时间相关的模块
 import time
+
 # 导入RP2040相关的模块
 from rp2 import PIO, StateMachine, asm_pio
+
 # 导入硬件相关的模块
 from machine import Pin, UART
 
 import pio_uart_tx
 
 # ======================================== 全局变量 ============================================
+
 
 # 定义了 UART 的波特率为115200
 UART_BAUD = 115200
@@ -26,6 +29,7 @@ PIN_BASE = 4
 UART_TX_COUNT = 0
 
 # ======================================== 功能函数 ============================================
+
 
 # 计时装饰器，用于计算函数运行时间
 def timed_function(f: callable, *args: tuple, **kwargs: dict) -> callable:
@@ -40,13 +44,13 @@ def timed_function(f: callable, *args: tuple, **kwargs: dict) -> callable:
     Returns:
         callable: 返回计时后的函数
     """
-    myname = str(f).split(' ')[1]
+    myname = str(f).split(" ")[1]
 
     def new_func(*args: tuple, **kwargs: dict) -> any:
         t: int = time.ticks_us()
         result = f(*args, **kwargs)
         delta: int = time.ticks_diff(time.ticks_us(), t)
-        print('Function {} Time = {:6.3f}ms'.format(myname, delta / 1000))
+        print("Function {} Time = {:6.3f}ms".format(myname, delta / 1000))
         return result
 
     return new_func
@@ -70,6 +74,7 @@ def hardware_uart_print(uart_obj: UART, s: str) -> None:
     while not uart.txdone():
         pass
 
+
 # ======================================== 自定义类 ============================================
 
 # ======================================== 初始化配置 ==========================================
@@ -82,13 +87,7 @@ sm.active(1)
 # 创建一个串口实例
 uart = UART(0, UART_BAUD)
 # 串口外设初始化
-uart.init(baudrate  = UART_BAUD,
-          bits      = 8,
-          parity    = None,
-          stop      = 1,
-          tx        = 0,
-          rx        = 1,
-          timeout   = 100)
+uart.init(baudrate=UART_BAUD, bits=8, parity=None, stop=1, tx=0, rx=1, timeout=100)
 
 # ========================================  主程序  ===========================================
 
