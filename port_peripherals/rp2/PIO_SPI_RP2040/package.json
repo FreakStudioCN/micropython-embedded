@@ -1,6 +1,6 @@
 {
   "name": "PIO_SPI_RP2040",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A MicroPython library to PIO_SPI",
   "author": "leeqingshui",
   "license": "MIT",
@@ -12,8 +12,8 @@
   },
   "urls": [
     [
-      "dma_uart_tx.pyy",
-      "code/dma_uart_tx.pyy"
+      "pio_spi.py",
+      "code/pio_spi.py"
     ]
   ]
 }

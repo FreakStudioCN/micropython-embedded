@@ -1,0 +1,19 @@
+{
+  "name": "MicroMLP",
+  "version": "1.0.0",
+  "description": "A MicroPython library to MicroMLP/一款专为 MicroPython 设计的微型人工神经网络多层感知器",
+  "author": "Jean-Christophe Bos",
+  "license": "MIT",
+  "chips": "all",
+  "fw": "all",
+  "_comments": {
+    "chips": "该包支持运行的芯片型号，all表示无芯片限制",
+    "fw": "该包依赖的特定固件如ulab、lvgl,all表示无固件依赖"
+  },
+  "urls": [
+    [
+      "microMLP.py",
+      "code/microMLP.py"
+    ]
+  ]
+}
