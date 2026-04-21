@@ -16,18 +16,17 @@ from xfyun_tts import XfyunTTS
 
 # ======================================== 全局变量 ============================================
 
-WIFI_SSID = "your_wifi_ssid"
+WIFI_SSID     = "your_wifi_ssid"
 WIFI_PASSWORD = "your_wifi_password"
 
-APPID = "your_appid"
-API_KEY = "your_api_key"
+APPID      = "your_appid"
+API_KEY    = "your_api_key"
 API_SECRET = "your_api_secret"
 
 OUTPUT_FILE = "output.pcm"
-OUTPUT_WAV = "output.wav"
+OUTPUT_WAV  = "output.wav"
 
 # ======================================== 功能函数 ============================================
-
 
 def connect_wifi():
     """
@@ -86,7 +85,8 @@ def sync_ntp():
             ntptime.host = host
             ntptime.settime()
             t = time.gmtime()
-            print("NTP synced via {}: {}-{:02d}-{:02d} {:02d}:{:02d}:{:02d} UTC".format(host, t[0], t[1], t[2], t[3], t[4], t[5]))
+            print("NTP synced via {}: {}-{:02d}-{:02d} {:02d}:{:02d}:{:02d} UTC".format(
+                host, t[0], t[1], t[2], t[3], t[4], t[5]))
             return
         except Exception as e:
             print("NTP failed ({}):".format(host), e)
@@ -142,15 +142,14 @@ async def run_tts_wav(text):
     else:
         print("Synthesis failed: no audio data received.")
 
-
 # ======================================== 自定义类 ============================================
 
 # ======================================== 初始化配置 ===========================================
 
 tts = XfyunTTS(
-    app_id=APPID,
-    api_key=API_KEY,
-    api_secret=API_SECRET,
+    app_id     = APPID,
+    api_key    = API_KEY,
+    api_secret = API_SECRET,
 )
 
 # ========================================  主程序  ===========================================

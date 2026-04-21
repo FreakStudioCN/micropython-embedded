@@ -451,7 +451,7 @@ class XfyunASR:
 
         # WebSocket 握手
         try:
-            await self._ws.handshake(url, cert_reqs=0)
+            await asyncio.wait_for(self._ws.handshake(url, cert_reqs=0), 10)
         except Exception as e:
             print("Handshake failed:", e)
             return ""
@@ -541,7 +541,7 @@ class XfyunASR:
         result = ""
         try:
             while await self._ws.open():
-                msg = await self._ws.recv()
+                msg = await asyncio.wait_for(self._ws.recv(), 10)
                 # 服务端主动关闭连接
                 if msg is None:
                     print("Connection closed by server.")

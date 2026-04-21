@@ -1,6 +1,6 @@
 {
   "name": "xfyun_asr",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "iFlytek online ASR (large model) WebSocket driver for MicroPython",
   "author": "leeqingsui",
   "license": "MIT",

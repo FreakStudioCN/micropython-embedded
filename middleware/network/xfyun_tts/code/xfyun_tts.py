@@ -19,16 +19,19 @@ from async_websocketclient import AsyncWebsocketClient, URI
 # ======================================== 全局变量 ============================================
 
 __version__ = "1.0.0"
+__author__ = "leeqingsui"
+__license__ = "MIT"
+__platform__ = "MicroPython v1.23"
 
-_HOST = "tts-api.xfyun.cn"
-_PATH = "/v2/tts"
+_HOST    = "tts-api.xfyun.cn"
+_PATH    = "/v2/tts"
 _WSS_URL = "wss://tts-api.xfyun.cn/v2/tts"
 
 _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_MONTHS   = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 # ======================================== 功能函数 ============================================
-
 
 def _rfc1123_now():
     """
@@ -48,13 +51,13 @@ def _rfc1123_now():
     # gmtime() -> (year, month, mday, hour, minute, second, weekday, yearday)
     # weekday: 0 = Monday, 6 = Sunday
     return "{wd}, {d:02d} {mon} {y} {h:02d}:{m:02d}:{s:02d} GMT".format(
-        wd=_WEEKDAYS[t[6]],
-        d=t[2],
-        mon=_MONTHS[t[1] - 1],
-        y=t[0],
-        h=t[3],
-        m=t[4],
-        s=t[5],
+        wd  = _WEEKDAYS[t[6]],
+        d   = t[2],
+        mon = _MONTHS[t[1] - 1],
+        y   = t[0],
+        h   = t[3],
+        m   = t[4],
+        s   = t[5],
     )
 
 
@@ -83,7 +86,7 @@ def _hmac_sha256(key, msg):
     block_size = 64
     if len(key) > block_size:
         key = hashlib.sha256(key).digest()
-    key = key + b"\x00" * (block_size - len(key))
+    key = key + b'\x00' * (block_size - len(key))
     o_key_pad = bytes(b ^ 0x5C for b in key)
     i_key_pad = bytes(b ^ 0x36 for b in key)
     inner = hashlib.sha256(i_key_pad + msg).digest()
@@ -110,15 +113,17 @@ def _url_encode(s):
     Returns:
         str: URL-encoded string.
     """
-    _safe = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")
+    _safe = frozenset(
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~'
+    )
     out = []
     for ch in s:
         if ch in _safe:
             out.append(ch)
         else:
-            for byte in ch.encode("utf-8"):
-                out.append("%{:02X}".format(byte))
-    return "".join(out)
+            for byte in ch.encode('utf-8'):
+                out.append('%{:02X}'.format(byte))
+    return ''.join(out)
 
 
 def _wav_header(sample_rate, channels, bits, data_size):
@@ -147,23 +152,15 @@ def _wav_header(sample_rate, channels, bits, data_size):
     Returns:
         bytes: 44-byte WAV file header.
     """
-    byte_rate = sample_rate * channels * bits // 8
+    byte_rate   = sample_rate * channels * bits // 8
     block_align = channels * bits // 8
     return struct.pack(
-        "<4sI4s4sIHHIIHH4sI",
-        b"RIFF",
-        data_size + 36,
-        b"WAVE",
-        b"fmt ",
-        16,
-        1,
-        channels,
-        sample_rate,
-        byte_rate,
-        block_align,
-        bits,
-        b"data",
-        data_size,
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF', data_size + 36,
+        b'WAVE',
+        b'fmt ', 16, 1, channels, sample_rate,
+        byte_rate, block_align, bits,
+        b'data', data_size,
     )
 
 
@@ -214,32 +211,32 @@ class _WsClient(AsyncWebsocketClient):
         Raises:
             ValueError: Raised when scheme is not ws or wss.
         """
-        if uri.startswith("wss://"):
-            protocol = "wss"
-            rest = uri[6:]
+        if uri.startswith('wss://'):
+            protocol     = 'wss'
+            rest         = uri[6:]
             default_port = 443
-        elif uri.startswith("ws://"):
-            protocol = "ws"
-            rest = uri[5:]
+        elif uri.startswith('ws://'):
+            protocol     = 'ws'
+            rest         = uri[5:]
             default_port = 80
         else:
-            raise ValueError("Scheme not ws or wss")
+            raise ValueError('Scheme not ws or wss')
 
-        slash = rest.find("/")
+        slash = rest.find('/')
         if slash == -1:
             hostpart = rest
-            path = "/"
+            path     = '/'
         else:
             hostpart = rest[:slash]
-            path = rest[slash:]
+            path     = rest[slash:]
 
-        colon = hostpart.find(":")
+        colon = hostpart.find(':')
         if colon == -1:
             hostname = hostpart
-            port = default_port
+            port     = default_port
         else:
             hostname = hostpart[:colon]
-            port = int(hostpart[colon + 1 :])
+            port     = int(hostpart[colon + 1:])
 
         return URI(protocol, hostname, port, path)
 
@@ -252,11 +249,11 @@ class XfyunTTS:
     Attributes:
         _app_id     (str): 讯飞开放平台 APPID。
         _api_key    (str): API Key。
-        _api_secret (str): API Secret（平台提供的原始字符串，勿 Base64 解码）。
+        _api_secret (str): API Secret（Base64 编码原文，由平台提供）。
         _vcn        (str): 发音人，默认 "x4_xiaoyan"。
         _aue        (str): 音频编码格式，默认 "raw"（原始 PCM）。
         _auf        (str): 音频采样规格，默认 "audio/L16;rate=8000"。
-        _ws         (_WsClient): 内部 WebSocket 客户端实例。
+        _ws         (AsyncWebsocketClient): 内部 WebSocket 客户端实例。
 
     ==========================================
 
@@ -266,21 +263,22 @@ class XfyunTTS:
     Attributes:
         _app_id     (str): iFlytek Open Platform APPID.
         _api_key    (str): API Key.
-        _api_secret (str): API Secret (raw string as provided by platform; do NOT Base64-decode).
+        _api_secret (str): API Secret (Base64-encoded string as provided by the platform).
         _vcn        (str): Voice name, default "x4_xiaoyan".
         _aue        (str): Audio encoding, default "raw" (raw PCM).
         _auf        (str): Audio format, default "audio/L16;rate=8000".
-        _ws         (_WsClient): Internal WebSocket client instance.
+        _ws         (AsyncWebsocketClient): Internal WebSocket client instance.
     """
 
-    def __init__(self, app_id, api_key, api_secret, vcn="x4_xiaoyan", aue="raw", auf="audio/L16;rate=8000"):
+    def __init__(self, app_id, api_key, api_secret,
+                 vcn="x4_xiaoyan", aue="raw", auf="audio/L16;rate=8000"):
         """
         初始化 TTS 驱动，保存鉴权参数与音频配置。
 
         Args:
             app_id     (str): 讯飞开放平台 APPID。
             api_key    (str): API Key。
-            api_secret (str): API Secret（平台提供的原始字符串）。
+            api_secret (str): API Secret（Base64 编码原文）。
             vcn        (str): 发音人，默认 "x4_xiaoyan"。
             aue        (str): 音频编码，默认 "raw"（PCM）。
             auf        (str): 音频格式，默认 "audio/L16;rate=8000"。
@@ -292,18 +290,18 @@ class XfyunTTS:
         Args:
             app_id     (str): iFlytek APPID.
             api_key    (str): API Key.
-            api_secret (str): API Secret (raw string from platform).
+            api_secret (str): API Secret (Base64-encoded string).
             vcn        (str): Voice name, default "x4_xiaoyan".
             aue        (str): Audio encoding, default "raw" (PCM).
             auf        (str): Audio format, default "audio/L16;rate=8000".
         """
-        self._app_id = app_id
-        self._api_key = api_key
+        self._app_id     = app_id
+        self._api_key    = api_key
         self._api_secret = api_secret
-        self._vcn = vcn
-        self._aue = aue
-        self._auf = auf
-        self._ws = _WsClient(ms_delay_for_read=5)
+        self._vcn        = vcn
+        self._aue        = aue
+        self._auf        = auf
+        self._ws         = _WsClient(ms_delay_for_read=5)
 
     def _build_auth_url(self):
         """
@@ -324,14 +322,17 @@ class XfyunTTS:
         # Signature origin string per iFlytek docs
         sig_origin = "host: {}\ndate: {}\nGET {} HTTP/1.1".format(_HOST, date, _PATH)
 
-        # API Secret used directly as UTF-8 bytes (do NOT Base64-decode)
-        secret_bytes = self._api_secret.encode("utf-8")
-        sig_bytes = _hmac_sha256(secret_bytes, sig_origin.encode("utf-8"))
-        sig_b64 = binascii.b2a_base64(sig_bytes).decode("utf-8").strip()
+        # Decode API Secret from Base64, then HMAC-SHA256 sign
+        secret_bytes = self._api_secret.encode('utf-8')
+        sig_bytes    = _hmac_sha256(secret_bytes, sig_origin.encode('utf-8'))
+        sig_b64      = binascii.b2a_base64(sig_bytes).decode('utf-8').strip()
 
         # Build authorization string and Base64-encode it
-        auth_origin = ('api_key="{}", algorithm="hmac-sha256", ' 'headers="host date request-line", signature="{}"').format(self._api_key, sig_b64)
-        auth_b64 = binascii.b2a_base64(auth_origin.encode("utf-8")).decode("utf-8").strip()
+        auth_origin = (
+            'api_key="{}", algorithm="hmac-sha256", '
+            'headers="host date request-line", signature="{}"'
+        ).format(self._api_key, sig_b64)
+        auth_b64 = binascii.b2a_base64(auth_origin.encode('utf-8')).decode('utf-8').strip()
 
         url = "{}?authorization={}&date={}&host={}".format(
             _WSS_URL,
@@ -361,7 +362,7 @@ class XfyunTTS:
         Returns:
             str: JSON-formatted request string.
         """
-        text_b64 = binascii.b2a_base64(text.encode("utf-8")).decode("utf-8").strip()
+        text_b64 = binascii.b2a_base64(text.encode('utf-8')).decode('utf-8').strip()
         req = {
             "common": {
                 "app_id": self._app_id,
@@ -373,7 +374,7 @@ class XfyunTTS:
                 "tte": "UTF8",
             },
             "data": {
-                "text": text_b64,
+                "text":   text_b64,
                 "status": 2,
             },
         }
@@ -386,12 +387,11 @@ class XfyunTTS:
         Args:
             text     (str): 待合成的文字内容。
             filepath (str, optional): 目标文件路径。提供时每帧立即写入文件，
-                                      内存峰值仅为单帧大小（约 1~4 KB）；
+                                      内存中峰值仅为单帧大小（约 1~4 KB）；
                                       为 None 时在内存中积累并返回 bytes（仅适合极短文本）。
-                                      后缀为 .wav 时自动写入标准 WAV 文件头。
 
         Returns:
-            int:   filepath 不为 None 时，返回写入的 PCM 总字节数；失败返回 0。
+            int:   filepath 不为 None 时，返回写入的总字节数；失败返回 0。
             bytes: filepath 为 None 时，返回完整 PCM 字节串；失败返回 b""。
 
         Notes:
@@ -405,13 +405,12 @@ class XfyunTTS:
 
         Args:
             text     (str): Text to synthesize.
-            filepath (str, optional): Destination file path. Each chunk is written immediately;
-                                      peak RAM usage is one chunk (~1-4 KB).
-                                      A .wav suffix triggers automatic WAV header generation.
+            filepath (str, optional): Destination file path. When provided, each chunk is
+                                      written immediately; peak RAM usage is one chunk (~1-4 KB).
                                       When None, chunks are accumulated in memory (short text only).
 
         Returns:
-            int:   Total PCM bytes written when filepath is given; 0 on failure.
+            int:   Total bytes written when filepath is given; 0 on failure.
             bytes: Complete PCM bytes when filepath is None; b"" on failure.
 
         Notes:
@@ -422,6 +421,11 @@ class XfyunTTS:
         print("Connecting to iFlytek TTS...")
 
         try:
+            await self._ws.close()
+        except Exception:
+            pass
+        self._ws = _WsClient(ms_delay_for_read=5)
+        try:
             await self._ws.handshake(url, cert_reqs=0)
         except Exception as e:
             print("Handshake failed:", e)
@@ -430,13 +434,13 @@ class XfyunTTS:
         print("Connected, sending request...")
         await self._ws.send(self._build_request(text))
 
-        is_wav = filepath is not None and filepath.lower().endswith(".wav")
-        total_bytes = 0
+        is_wav       = filepath is not None and filepath.lower().endswith('.wav')
+        total_bytes  = 0
         audio_chunks = [] if filepath is None else None
-        f = open(filepath, "wb") if filepath else None
+        f            = open(filepath, "wb") if filepath else None
         if is_wav:
             try:
-                sample_rate = int(self._auf.split("rate=")[1])
+                sample_rate = int(self._auf.split('rate=')[1])
             except Exception:
                 sample_rate = 8000
             f.write(_wav_header(sample_rate, 1, 16, 0))  # placeholder, fixed after streaming
@@ -444,7 +448,7 @@ class XfyunTTS:
 
         try:
             while await self._ws.open():
-                msg = await self._ws.recv()
+                msg = await asyncio.wait_for(self._ws.recv(), 10)
                 if msg is None:
                     print("Connection closed by server.")
                     break
@@ -461,7 +465,7 @@ class XfyunTTS:
                     break
 
                 audio_section = resp.get("data", {})
-                audio_b64 = audio_section.get("audio", "")
+                audio_b64     = audio_section.get("audio", "")
                 if audio_b64:
                     chunk = binascii.a2b_base64(audio_b64)
                     total_bytes += len(chunk)
@@ -485,6 +489,80 @@ class XfyunTTS:
         await self._ws.close()
         return total_bytes if filepath else b"".join(audio_chunks)
 
+    async def synthesize_and_play(self, text, audio_out, amp_sd, rate=16000):
+        """
+        连接讯飞 TTS，收到每个音频 chunk 立即写入 I2S，无需等待全部合成完成。
+        相比 synthesize()+play_pcm() 可减少约 1~2 秒首字节延迟。
+
+        Args:
+            text      (str): 待合成文字。
+            audio_out (I2S): 已初始化的 I2S TX 实例。
+            amp_sd    (Pin): 功放 SD 引脚，合成前置高，播完后置低。
+            rate      (int): 采样率，默认 16000，用于计算尾部等待时长。
+
+        Returns:
+            int: 实际写入 I2S 的总字节数；失败返回 0。
+        """
+        url = self._build_auth_url()
+        print("[TTS] Connecting...")
+
+        # 确保旧连接彻底关闭再新建，避免 socket 资源耗尽
+        try:
+            await self._ws.close()
+        except Exception:
+            pass
+        self._ws = _WsClient(ms_delay_for_read=5)
+        try:
+            await asyncio.wait_for(self._ws.handshake(url, cert_reqs=0), 10)
+        except Exception as e:
+            print("[TTS] Handshake failed:", e)
+            return 0
+
+        await self._ws.send(self._build_request(text))
+
+        amp_sd.value(1)
+        total_bytes = 0
+        swriter = asyncio.StreamWriter(audio_out)
+        print("[TTS] Streaming audio...")
+
+        try:
+            while await self._ws.open():
+                msg = await asyncio.wait_for(self._ws.recv(), 10)
+                if msg is None:
+                    break
+
+                try:
+                    resp = json.loads(msg)
+                except Exception:
+                    break
+
+                code = resp.get("code", -1)
+                if code != 0:
+                    print("[TTS] API error:", code, resp.get("message", ""))
+                    break
+
+                audio_section = resp.get("data", {})
+                audio_b64     = audio_section.get("audio", "")
+                if audio_b64:
+                    chunk = binascii.a2b_base64(audio_b64)
+                    swriter.write(chunk)
+                    await swriter.drain()
+                    total_bytes += len(chunk)
+
+                if audio_section.get("status", 0) == 2:
+                    break
+        finally:
+            pass
+
+        await self._ws.close()
+
+        # 等待 I2S 缓冲区中剩余数据播完
+        ibuf_ms = total_bytes * 1000 // (rate * 2)
+        await asyncio.sleep_ms(ibuf_ms + 200)
+        amp_sd.value(0)
+        await asyncio.sleep_ms(300)
+        print("[TTS] Done, {} bytes".format(total_bytes))
+        return total_bytes
 
 # ======================================== 初始化配置 ===========================================
 

@@ -38,6 +38,7 @@
 - **两层结果解码**：`payload.result.text` → Base64 解码 → JSON 解析 → 拼接文字
 - **正则递归绕过**：通过子类覆盖 `urlparse()`，规避 MicroPython `ure` 引擎对长 URL 的递归溢出
 - **完整参数校验**：`__init__` 和 `recognize()` 均对入参做 None / 类型 / 值范围三级校验
+- **超时保护**：`handshake()` 和 `recv()` 均有 10 秒超时，网络异常时自动返回空字符串而非永久阻塞
 
 ---
 

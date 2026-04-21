@@ -39,7 +39,9 @@
 - **WAV 文件自动生成**：先写占位头，接收完毕后 `seek(0)` 回填真实 data size
 - **PCM / WAV 双格式**：根据 `filepath` 后缀（`.wav` / 其他）自动选择输出格式
 - **正则递归绕过**：通过子类覆盖 `urlparse()`，规避 MicroPython `ure` 引擎对长 URL 的递归溢出
-- **NTP 多服务器重试**：`main.py` 中依次尝试阿里云、腾讯云、`pool.ntp.org`
+- **边收边播（synthesize_and_play）**：收到每帧音频立即写入 I2S，通过 asyncio StreamWriter 异步写入，减少播放卡顿
+- **socket 资源保护**：每次新建连接前先关闭旧连接，避免 ESP32 TLS socket 资源耗尽
+- **超时保护**：`handshake()` 和 `recv()` 均有 10 秒超时，网络异常时自动返回而非永久阻塞
 
 ---
 
@@ -189,6 +191,7 @@ pcm_bytes = asyncio.run(tts.synthesize("Hi"))
 |------|------|--------|------|
 | `XfyunTTS(app_id, api_key, api_secret, ...)` | 见下表 | 实例 | 初始化驱动 |
 | `await synthesize(text, filepath=None)` | `text`: 待合成文字；`filepath`: 目标文件路径 | `int` 或 `bytes` | 合成并写文件或返回内存数据 |
+| `await synthesize_and_play(text, audio_out, amp_sd, rate=16000)` | `text`: 待合成文字；`audio_out`: I2S TX 实例；`amp_sd`: 功放 SD 引脚；`rate`: 采样率 | `int` | 边收边播，返回写入 I2S 的总字节数 |
 
 ### 初始化参数说明
 
