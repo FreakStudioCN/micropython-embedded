@@ -1,6 +1,6 @@
 {
   "name": "async_websocket_client",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A MicroPython library for async WebSocket client",
   "author": "vovaman",
   "license": "MIT",

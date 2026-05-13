@@ -20,6 +20,12 @@ import ssl
 
 # ======================================== 全局变量 ============================================
 
+# 兼容标准 Python（MicroPython 有 const，标准 Python 没有）
+try:
+    const
+except NameError:
+    const = lambda x: x
+
 # Opcodes
 OP_CONT = const(0x0)
 OP_TEXT = const(0x1)
@@ -360,7 +366,9 @@ class AsyncWebsocketClient:
             )
 
         def send_header(header, *args):
-            self.sock.write(header % args + "\r\n")
+            # CPython bytes-% requires bytes args; MicroPython accepts str too
+            bargs = tuple(a if isinstance(a, (bytes, bytearray)) else str(a).encode("utf-8") for a in args)
+            self.sock.write(header % bargs + b"\r\n")
 
         # Sec-WebSocket-Key is 16 bytes of random base64 encoded
         key = b.b2a_base64(bytes(r.getrandbits(8) for _ in range(16)))[:-1]
@@ -371,7 +379,8 @@ class AsyncWebsocketClient:
         send_header(b"Upgrade: websocket")
         send_header(b"Sec-WebSocket-Key: %s", key)
         send_header(b"Sec-WebSocket-Version: 13")
-        send_header(b"Origin: http://{hostname}:{port}".format(hostname=self.uri.hostname, port=self.uri.port))
+        # bytes.format() 仅 MicroPython 支持，改用 %s 保持 CPython 兼容
+        send_header(b"Origin: http://%s:%s", self.uri.hostname, self.uri.port)
 
         for key, value in headers:
             send_header(b"%s: %s", key, value)
@@ -555,7 +564,12 @@ class AsyncWebsocketClient:
                 raise NotImplementedError()
 
             if opcode == OP_TEXT:
-                return data.decode("utf-8")
+                try:
+                    return data.decode("utf-8")
+                except UnicodeError:
+                    # 如果解码失败，返回原始bytes
+                    print("[WebSocket] Warning: OP_TEXT frame contains invalid UTF-8, returning raw bytes")
+                    return data
             elif opcode == OP_BYTES:
                 return data
             elif opcode == OP_CLOSE:
