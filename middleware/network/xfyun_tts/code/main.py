@@ -3,7 +3,7 @@
 # @Time    : 2026/04/12
 # @Author  : leeqingsui
 # @File    : main.py
-# @Description : iFlytek TTS usage example for MicroPython on Raspberry Pi Pico 2W
+# @Description : iFlytek TTS comprehensive test for MicroPython (ESP32-S3 / Pico 2W)
 # @License : MIT
 
 # ======================================== 导入相关模块 =========================================
@@ -13,18 +13,32 @@ import asyncio
 import time
 import ntptime
 from xfyun_tts import XfyunTTS
+from machine import I2S, Pin
 
 # ======================================== 全局变量 ============================================
 
-WIFI_SSID     = "your_wifi_ssid"
-WIFI_PASSWORD = "your_wifi_password"
+# WiFi 配置 / WiFi Configuration
+WIFI_SSID     = "CU_kM7v"
+WIFI_PASSWORD = "a7tmyakw"
 
-APPID      = "your_appid"
-API_KEY    = "your_api_key"
-API_SECRET = "your_api_secret"
+# 讯飞 TTS API 配置 / iFlytek TTS API Configuration
+TTS_APPID  = "85ca87b7"
+TTS_KEY    = "a64add4b50e1df51f2b31ed8ba086722"
+TTS_SECRET = "YWE2Y2MwYWEzZGQ1OGM4Yjg2NDkxYTFm"
 
-OUTPUT_FILE = "output.pcm"
-OUTPUT_WAV  = "output.wav"
+# I2S 扬声器引脚配置 / I2S Speaker Pin Configuration (ESP32-S3)
+SPK_SCK = 14
+SPK_WS  = 15
+SPK_SD  = 16
+AMP_SD  = 17
+
+# 输出文件 / Output Files
+OUTPUT_PCM = "test_output.pcm"
+OUTPUT_WAV = "test_output.wav"
+
+# 全局 I2S 和功放对象 / Global I2S and Amp objects
+audio_out = None
+amp_sd = None
 
 # ======================================== 功能函数 ============================================
 
@@ -93,6 +107,35 @@ def sync_ntp():
     print("NTP sync unavailable; signature timestamp may be rejected.")
 
 
+async def run_tts_and_play(text):
+    """
+    调用 XfyunTTS 边合成边播放。
+
+    Args:
+        text (str): 待合成的文本内容。
+
+    ==========================================
+
+    Synthesize and play the given text using XfyunTTS.
+
+    Args:
+        text (str): Text to synthesize.
+    """
+    print("\n[Test] Synthesizing and playing:", text)
+
+    try:
+        total = await tts.synthesize_and_play(text, audio_out, amp_sd, rate=16000)
+
+        if total:
+            print("[Success] Played", total, "bytes")
+        else:
+            print("[Failed] Synthesis failed: no audio data received.")
+        return total
+    except Exception as e:
+        print(f"[Error] Playback failed: {e}")
+        return 0
+
+
 async def run_tts(text):
     """
     调用 XfyunTTS 流式合成指定文本，直接将 PCM 数据写入本地文件。
@@ -108,13 +151,14 @@ async def run_tts(text):
     Args:
         text (str): Text to synthesize.
     """
-    print("Synthesizing:", text)
-    total = await tts.synthesize(text, filepath=OUTPUT_FILE)
+    print("\n[Test] Synthesizing:", text)
+    total = await tts.synthesize(text, filepath=OUTPUT_PCM)
 
     if total:
-        print("Saved", total, "bytes ->", OUTPUT_FILE)
+        print("[Success] Saved", total, "bytes ->", OUTPUT_PCM)
     else:
-        print("Synthesis failed: no audio data received.")
+        print("[Failed] Synthesis failed: no audio data received.")
+    return total
 
 
 async def run_tts_wav(text):
@@ -134,37 +178,335 @@ async def run_tts_wav(text):
     Args:
         text (str): Text to synthesize.
     """
-    print("Synthesizing (WAV):", text)
+    print("\n[Test] Synthesizing (WAV):", text)
     total = await tts.synthesize(text, filepath=OUTPUT_WAV)
 
     if total:
-        print("Saved", total, "bytes PCM +44 bytes header ->", OUTPUT_WAV)
+        print("[Success] Saved", total, "bytes PCM +44 bytes header ->", OUTPUT_WAV)
     else:
-        print("Synthesis failed: no audio data received.")
+        print("[Failed] Synthesis failed: no audio data received.")
+    return total
+
+
+async def test_voice_switching():
+    """
+    测试不同发音人切换。
+
+    ==========================================
+
+    Test switching between different voices.
+    """
+    print("\n" + "="*60)
+    print("TEST 1: Voice Switching (发音人切换)")
+    print("="*60)
+
+    voices = [
+        (XfyunTTS.VOICE_XIAOYAN, "我是讯飞小燕"),
+        (XfyunTTS.VOICE_YEZI, "我是讯飞小露"),
+        (XfyunTTS.VOICE_JIUXU, "我是讯飞许久"),
+    ]
+
+    for voice, text in voices:
+        tts.set_voice(voice)
+        print(f"\n[Voice] {voice}")
+        await run_tts_and_play(text)
+        await asyncio.sleep(1)
+
+
+async def test_speed_volume_pitch():
+    """
+    测试语速、音量、音高调整。
+
+    ==========================================
+
+    Test speed, volume, and pitch adjustments.
+    """
+    print("\n" + "="*60)
+    print("TEST 2: Speed, Volume, Pitch (语速、音量、音高)")
+    print("="*60)
+
+    # 恢复默认发音人
+    tts.set_voice(XfyunTTS.VOICE_XIAOYAN)
+
+    # 测试语速
+    print("\n[Speed Test]")
+    tts.set_speed(30)
+    await run_tts_and_play("这是慢速语音测试")
+    await asyncio.sleep(1)
+
+    tts.set_speed(80)
+    await run_tts_and_play("这是快速语音测试")
+    await asyncio.sleep(1)
+
+    # 测试音量
+    print("\n[Volume Test]")
+    tts.set_speed(50).set_volume(30)
+    await run_tts_and_play("这是低音量测试")
+    await asyncio.sleep(1)
+
+    tts.set_volume(90)
+    await run_tts_and_play("这是高音量测试")
+    await asyncio.sleep(1)
+
+    # 测试音高
+    print("\n[Pitch Test]")
+    tts.set_volume(50).set_pitch(30)
+    await run_tts_and_play("这是低音高测试")
+    await asyncio.sleep(1)
+
+    tts.set_pitch(70)
+    await run_tts_and_play("这是高音高测试")
+    await asyncio.sleep(1)
+
+
+async def test_chaining():
+    """
+    测试链式调用。
+
+    ==========================================
+
+    Test method chaining.
+    """
+    print("\n" + "="*60)
+    print("TEST 3: Method Chaining (链式调用)")
+    print("="*60)
+
+    # 链式设置多个参数并播放
+    print("\n[Test] Synthesizing and playing: 链式调用测试成功")
+    total = await (tts.set_voice(XfyunTTS.VOICE_YEZI)
+                      .set_speed(60)
+                      .set_volume(70)
+                      .set_pitch(55)
+                      .synthesize_and_play("链式调用测试成功", audio_out, amp_sd, rate=16000))
+    if total:
+        print(f"[Success] Played {total} bytes")
+    await asyncio.sleep(1)
+
+
+async def test_sample_rate():
+    """
+    测试不同采样率。
+
+    ==========================================
+
+    Test different sample rates.
+    """
+    print("\n" + "="*60)
+    print("TEST 4: Sample Rate (采样率)")
+    print("="*60)
+
+    # 8kHz
+    tts.set_sample_rate(8000).set_speed(50).set_volume(50).set_pitch(50)
+    print("\n[Sample Rate] 8kHz")
+    await run_tts_and_play("这是8千赫兹采样率测试")
+    await asyncio.sleep(1)
+
+    # 16kHz
+    tts.set_sample_rate(16000)
+    print("\n[Sample Rate] 16kHz")
+    await run_tts_and_play("这是16千赫兹采样率测试")
+    await asyncio.sleep(1)
+
+
+async def test_background_sound():
+    """
+    测试背景音。
+
+    ==========================================
+
+    Test background sound.
+    """
+    print("\n" + "="*60)
+    print("TEST 5: Background Sound (背景音)")
+    print("="*60)
+
+    # 开启背景音
+    tts.set_background_sound(True)
+    print("\n[Background Sound] Enabled")
+    await run_tts_and_play("这是带背景音的语音")
+    await asyncio.sleep(1)
+
+    # 关闭背景音
+    tts.set_background_sound(False)
+    print("\n[Background Sound] Disabled")
+    await run_tts_and_play("这是无背景音的语音")
+    await asyncio.sleep(1)
+
+
+async def test_english_pronunciation():
+    """
+    测试英文发音方式。
+
+    ==========================================
+
+    Test English pronunciation modes.
+    """
+    print("\n" + "="*60)
+    print("TEST 6: English Pronunciation (英文发音)")
+    print("="*60)
+
+    test_text = "Hello World, this is a test"
+
+    # 模式 0: 自动判断，按单词发音
+    tts.set_english_pronunciation("0")
+    print("\n[English Mode] 0 - Auto (word)")
+    await run_tts_and_play(test_text)
+    await asyncio.sleep(1)
+
+    # 模式 1: 按字母发音
+    tts.set_english_pronunciation("1")
+    print("\n[English Mode] 1 - Letter")
+    await run_tts_and_play(test_text)
+    await asyncio.sleep(1)
+
+
+async def test_digit_pronunciation():
+    """
+    测试数字发音方式。
+
+    ==========================================
+
+    Test digit pronunciation modes.
+    """
+    print("\n" + "="*60)
+    print("TEST 7: Digit Pronunciation (数字发音)")
+    print("="*60)
+
+    test_text = "今天是2026年5月15日"
+
+    # 恢复英文发音默认值
+    tts.set_english_pronunciation("0")
+
+    # 模式 0: 自动判断
+    tts.set_digit_pronunciation("0")
+    print("\n[Digit Mode] 0 - Auto")
+    await run_tts_and_play(test_text)
+    await asyncio.sleep(1)
+
+    # 模式 1: 完全数值
+    tts.set_digit_pronunciation("1")
+    print("\n[Digit Mode] 1 - Numeric")
+    await run_tts_and_play(test_text)
+    await asyncio.sleep(1)
+
+    # 模式 2: 完全字符串
+    tts.set_digit_pronunciation("2")
+    print("\n[Digit Mode] 2 - String")
+    await run_tts_and_play(test_text)
+    await asyncio.sleep(1)
+
+
+async def test_realtime_playback():
+    """
+    测试实时播放（边合成边播放）。
+    需要硬件支持 I2S。
+
+    ==========================================
+
+    Test real-time playback (synthesize and play simultaneously).
+    Requires I2S hardware support.
+    """
+    print("\n" + "="*60)
+    print("TEST 8: Real-time Playback (实时播放)")
+    print("="*60)
+
+    # 恢复默认设置
+    tts.set_voice(XfyunTTS.VOICE_XIAOYAN)
+    tts.set_speed(50).set_volume(70).set_pitch(50)
+    tts.set_digit_pronunciation("0")
+    tts.set_sample_rate(16000)
+    tts.set_english_pronunciation("0")
+
+    print("\n[Test] Real-time playback with default settings...")
+    await run_tts_and_play("实时播放测试，边合成边播放，减少延迟")
+
+
+async def run_all_tests():
+    """
+    运行所有测试用例。
+
+    ==========================================
+
+    Run all test cases.
+    """
+    global audio_out, amp_sd
+
+    print("\n" + "="*60)
+    print("XfyunTTS v1.1.0 Comprehensive Test Suite")
+    print("="*60)
+
+    # 初始化 I2S 用于所有测试
+    try:
+        print("\n[I2S] Initializing audio output...")
+        audio_out = I2S(
+            0,
+            sck=Pin(SPK_SCK),
+            ws=Pin(SPK_WS),
+            sd=Pin(SPK_SD),
+            mode=I2S.TX,
+            bits=16,
+            format=I2S.MONO,
+            rate=16000,
+            ibuf=20000
+        )
+        amp_sd = Pin(AMP_SD, Pin.OUT)
+        print("[I2S] Audio output initialized successfully")
+    except Exception as e:
+        print(f"[Error] I2S initialization failed: {e}")
+        print("[Info] Tests will run without audio playback")
+        return
+
+    await test_voice_switching()
+    await test_speed_volume_pitch()
+    await test_chaining()
+    await test_sample_rate()
+    await test_background_sound()
+    await test_english_pronunciation()
+    await test_digit_pronunciation()
+    await test_realtime_playback()
+
+    # 清理 I2S
+    try:
+        audio_out.deinit()
+        print("\n[I2S] Audio output deinitialized")
+    except Exception:
+        pass
+
+    print("\n" + "="*60)
+    print("All tests completed!")
+    print("="*60)
 
 # ======================================== 自定义类 ============================================
 
 # ======================================== 初始化配置 ===========================================
 
 tts = XfyunTTS(
-    app_id     = APPID,
-    api_key    = API_KEY,
-    api_secret = API_SECRET,
+    app_id     = TTS_APPID,
+    api_key    = TTS_KEY,
+    api_secret = TTS_SECRET,
 )
 
 # ========================================  主程序  ===========================================
 
 if __name__ == "__main__":
     time.sleep(3)
-    print("--- FreakStudio iFlytek TTS Demo ---")
+    print("\n" + "="*60)
+    print("XfyunTTS v1.1.0 Comprehensive Test")
+    print("="*60)
 
     if not connect_wifi():
-        print("Aborting: WiFi unavailable.")
+        print("\n[Error] Aborting: WiFi unavailable.")
     else:
         sync_ntp()
 
-        # Demo 1: raw PCM output
-        asyncio.run(run_tts("Hello, I am Xiaozhi. Nice to meet you."))
+        print("\n[Info] Starting comprehensive test suite...")
+        print("[Info] This will test all new features in v1.1.0")
 
-        # Demo 2: WAV output — open output.wav directly on PC to verify
-        asyncio.run(run_tts_wav("Hi there, this is a WAV format test from Pico 2W."))
+        try:
+            asyncio.run(run_all_tests())
+        except KeyboardInterrupt:
+            print("\n[Info] Test interrupted by user")
+        except Exception as e:
+            print(f"\n[Error] Test failed: {e}")
+
+        print("\n[Info] Test session completed")
