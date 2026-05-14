@@ -1,7 +1,7 @@
 {
   "name": "xfyun_tts",
-  "version": "1.1.0",
-  "description": "iFlytek online TTS WebSocket driver for MicroPython",
+  "version": "1.2.0",
+  "description": "iFlytek online TTS driver over WebSocket for MicroPython",
   "author": "leeqingsui",
   "license": "MIT",
   "chips": "all",
@@ -11,12 +11,9 @@
     "fw": "该包依赖的特定固件如ulab、lvgl,all表示无固件依赖"
   },
   "deps": [
-    ["https://upypi.net/pkgs/async_websocket_client/1.0.0", "latest"]
+    ["https://upypi.net/pkgs/async_websocket_client/1.0.1", "latest"]
   ],
   "urls": [
-    [
-      "xfyun_tts.py",
-      "code/xfyun_tts.py"
-    ]
+    ["xfyun_tts.py", "code/xfyun_tts.py"]
   ]
 }

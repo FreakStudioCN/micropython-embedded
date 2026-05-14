@@ -17,26 +17,29 @@ from machine import I2S, Pin
 
 # ======================================== 全局变量 ============================================
 
-# WiFi 配置 / WiFi Configuration
-WIFI_SSID     = "CU_kM7v"
-WIFI_PASSWORD = "a7tmyakw"
+# 请替换为你的实际 WiFi SSID
+WIFI_SSID     = "your_wifi_ssid"
+# 请替换为你的实际 WiFi 密码
+WIFI_PASSWORD = "your_wifi_password"
 
-# 讯飞 TTS API 配置 / iFlytek TTS API Configuration
-TTS_APPID  = "85ca87b7"
-TTS_KEY    = "a64add4b50e1df51f2b31ed8ba086722"
-TTS_SECRET = "YWE2Y2MwYWEzZGQ1OGM4Yjg2NDkxYTFm"
+# 请替换为你的实际讯飞 APPID
+TTS_APPID  = "your_app_id"
+# 请替换为你的实际讯飞 API Key
+TTS_KEY    = "your_api_key"
+# 请替换为你的实际讯飞 API Secret
+TTS_SECRET = "your_api_secret"
 
-# I2S 扬声器引脚配置 / I2S Speaker Pin Configuration (ESP32-S3)
-SPK_SCK = 14
-SPK_WS  = 15
-SPK_SD  = 16
-AMP_SD  = 17
+# I2S 扬声器引脚配置（ESP32-S3）
+spk_sck = 14
+spk_ws  = 15
+spk_sd  = 16
+amp_sd_pin  = 17
 
-# 输出文件 / Output Files
-OUTPUT_PCM = "test_output.pcm"
-OUTPUT_WAV = "test_output.wav"
+# 输出文件路径
+output_pcm = "test_output.pcm"
+output_wav = "test_output.wav"
 
-# 全局 I2S 和功放对象 / Global I2S and Amp objects
+# 全局 I2S 和功放对象
 audio_out = None
 amp_sd = None
 
@@ -48,13 +51,6 @@ def connect_wifi():
 
     Returns:
         network.WLAN: 已连接的 WLAN 对象；连接失败时返回 None。
-
-    ==========================================
-
-    Connect to WiFi and return the network object.
-
-    Returns:
-        network.WLAN: Connected WLAN object; None if connection fails.
     """
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
@@ -87,11 +83,6 @@ def sync_ntp():
     """
     通过 NTP 同步系统时间，为讯飞 API 鉴权签名提供准确时间戳。
     依次尝试多个 NTP 服务器，全部失败时打印警告但不中断流程。
-
-    ==========================================
-
-    Sync system time via NTP for iFlytek API authentication signature.
-    Tries multiple NTP servers in order; prints a warning if all fail.
     """
     servers = ("ntp.aliyun.com", "ntp.tencent.com", "pool.ntp.org")
     for host in servers:
@@ -113,17 +104,11 @@ async def run_tts_and_play(text):
 
     Args:
         text (str): 待合成的文本内容。
-
-    ==========================================
-
-    Synthesize and play the given text using XfyunTTS.
-
-    Args:
-        text (str): Text to synthesize.
     """
     print("\n[Test] Synthesizing and playing:", text)
 
     try:
+        # 调用实时播放接口
         total = await tts.synthesize_and_play(text, audio_out, amp_sd, rate=16000)
 
         if total:
@@ -132,7 +117,7 @@ async def run_tts_and_play(text):
             print("[Failed] Synthesis failed: no audio data received.")
         return total
     except Exception as e:
-        print(f"[Error] Playback failed: {e}")
+        print("[Error] Playback failed:", e)
         return 0
 
 
@@ -142,20 +127,13 @@ async def run_tts(text):
 
     Args:
         text (str): 待合成的文本内容。
-
-    ==========================================
-
-    Synthesize the given text using XfyunTTS in streaming mode,
-    writing PCM data directly to a local file.
-
-    Args:
-        text (str): Text to synthesize.
     """
     print("\n[Test] Synthesizing:", text)
-    total = await tts.synthesize(text, filepath=OUTPUT_PCM)
+    # 合成并保存为 PCM 文件
+    total = await tts.synthesize(text, filepath=output_pcm)
 
     if total:
-        print("[Success] Saved", total, "bytes ->", OUTPUT_PCM)
+        print("[Success] Saved", total, "bytes ->", output_pcm)
     else:
         print("[Failed] Synthesis failed: no audio data received.")
     return total
@@ -168,33 +146,23 @@ async def run_tts_wav(text):
 
     Args:
         text (str): 待合成的文本内容。
-
-    ==========================================
-
-    Synthesize the given text using XfyunTTS in streaming mode,
-    writing a WAV file (with header) directly to local storage.
-    The WAV file can be opened on PC by any audio player without extra parameters.
-
-    Args:
-        text (str): Text to synthesize.
     """
     print("\n[Test] Synthesizing (WAV):", text)
-    total = await tts.synthesize(text, filepath=OUTPUT_WAV)
+    # 合成并保存为 WAV 文件
+    total = await tts.synthesize(text, filepath=output_wav)
 
     if total:
-        print("[Success] Saved", total, "bytes PCM +44 bytes header ->", OUTPUT_WAV)
+        print("[Success] Saved", total, "bytes PCM +44 bytes header ->", output_wav)
     else:
         print("[Failed] Synthesis failed: no audio data received.")
     return total
 
 
+
+
 async def test_voice_switching():
     """
     测试不同发音人切换。
-
-    ==========================================
-
-    Test switching between different voices.
     """
     print("\n" + "="*60)
     print("TEST 1: Voice Switching (发音人切换)")
@@ -207,8 +175,9 @@ async def test_voice_switching():
     ]
 
     for voice, text in voices:
+        # 设置发音人
         tts.set_voice(voice)
-        print(f"\n[Voice] {voice}")
+        print("\n[Voice]", voice)
         await run_tts_and_play(text)
         await asyncio.sleep(1)
 
@@ -216,10 +185,6 @@ async def test_voice_switching():
 async def test_speed_volume_pitch():
     """
     测试语速、音量、音高调整。
-
-    ==========================================
-
-    Test speed, volume, and pitch adjustments.
     """
     print("\n" + "="*60)
     print("TEST 2: Speed, Volume, Pitch (语速、音量、音高)")
@@ -262,10 +227,6 @@ async def test_speed_volume_pitch():
 async def test_chaining():
     """
     测试链式调用。
-
-    ==========================================
-
-    Test method chaining.
     """
     print("\n" + "="*60)
     print("TEST 3: Method Chaining (链式调用)")
@@ -279,29 +240,25 @@ async def test_chaining():
                       .set_pitch(55)
                       .synthesize_and_play("链式调用测试成功", audio_out, amp_sd, rate=16000))
     if total:
-        print(f"[Success] Played {total} bytes")
+        print("[Success] Played", total, "bytes")
     await asyncio.sleep(1)
 
 
 async def test_sample_rate():
     """
     测试不同采样率。
-
-    ==========================================
-
-    Test different sample rates.
     """
     print("\n" + "="*60)
     print("TEST 4: Sample Rate (采样率)")
     print("="*60)
 
-    # 8kHz
+    # 8kHz 采样率测试
     tts.set_sample_rate(8000).set_speed(50).set_volume(50).set_pitch(50)
     print("\n[Sample Rate] 8kHz")
     await run_tts_and_play("这是8千赫兹采样率测试")
     await asyncio.sleep(1)
 
-    # 16kHz
+    # 16kHz 采样率测试
     tts.set_sample_rate(16000)
     print("\n[Sample Rate] 16kHz")
     await run_tts_and_play("这是16千赫兹采样率测试")
@@ -311,10 +268,6 @@ async def test_sample_rate():
 async def test_background_sound():
     """
     测试背景音。
-
-    ==========================================
-
-    Test background sound.
     """
     print("\n" + "="*60)
     print("TEST 5: Background Sound (背景音)")
@@ -336,10 +289,6 @@ async def test_background_sound():
 async def test_english_pronunciation():
     """
     测试英文发音方式。
-
-    ==========================================
-
-    Test English pronunciation modes.
     """
     print("\n" + "="*60)
     print("TEST 6: English Pronunciation (英文发音)")
@@ -363,10 +312,6 @@ async def test_english_pronunciation():
 async def test_digit_pronunciation():
     """
     测试数字发音方式。
-
-    ==========================================
-
-    Test digit pronunciation modes.
     """
     print("\n" + "="*60)
     print("TEST 7: Digit Pronunciation (数字发音)")
@@ -400,11 +345,6 @@ async def test_realtime_playback():
     """
     测试实时播放（边合成边播放）。
     需要硬件支持 I2S。
-
-    ==========================================
-
-    Test real-time playback (synthesize and play simultaneously).
-    Requires I2S hardware support.
     """
     print("\n" + "="*60)
     print("TEST 8: Real-time Playback (实时播放)")
@@ -424,10 +364,6 @@ async def test_realtime_playback():
 async def run_all_tests():
     """
     运行所有测试用例。
-
-    ==========================================
-
-    Run all test cases.
     """
     global audio_out, amp_sd
 
@@ -435,27 +371,28 @@ async def run_all_tests():
     print("XfyunTTS v1.1.0 Comprehensive Test Suite")
     print("="*60)
 
-    # 初始化 I2S 用于所有测试
+    # 初始化 I2S 音频输出
     try:
         print("\n[I2S] Initializing audio output...")
         audio_out = I2S(
             0,
-            sck=Pin(SPK_SCK),
-            ws=Pin(SPK_WS),
-            sd=Pin(SPK_SD),
+            sck=Pin(spk_sck),
+            ws=Pin(spk_ws),
+            sd=Pin(spk_sd),
             mode=I2S.TX,
             bits=16,
             format=I2S.MONO,
             rate=16000,
             ibuf=20000
         )
-        amp_sd = Pin(AMP_SD, Pin.OUT)
+        amp_sd = Pin(amp_sd_pin, Pin.OUT)
         print("[I2S] Audio output initialized successfully")
     except Exception as e:
-        print(f"[Error] I2S initialization failed: {e}")
+        print("[Error] I2S initialization failed:", e)
         print("[Info] Tests will run without audio playback")
         return
 
+    # 执行所有测试场景
     await test_voice_switching()
     await test_speed_volume_pitch()
     await test_chaining()
@@ -465,7 +402,7 @@ async def run_all_tests():
     await test_digit_pronunciation()
     await test_realtime_playback()
 
-    # 清理 I2S
+    # 清理 I2S 资源
     try:
         audio_out.deinit()
         print("\n[I2S] Audio output deinitialized")
@@ -480,6 +417,10 @@ async def run_all_tests():
 
 # ======================================== 初始化配置 ===========================================
 
+time.sleep(3)
+print("FreakStudio: Testing XfyunTTS v1.1.0 driver...")
+
+# 实例化 TTS 驱动
 tts = XfyunTTS(
     app_id     = TTS_APPID,
     api_key    = TTS_KEY,
@@ -489,24 +430,35 @@ tts = XfyunTTS(
 # ========================================  主程序  ===========================================
 
 if __name__ == "__main__":
-    time.sleep(3)
     print("\n" + "="*60)
     print("XfyunTTS v1.1.0 Comprehensive Test")
     print("="*60)
 
+    # 连接 WiFi
     if not connect_wifi():
         print("\n[Error] Aborting: WiFi unavailable.")
     else:
+        # 同步 NTP 时间
         sync_ntp()
 
         print("\n[Info] Starting comprehensive test suite...")
         print("[Info] This will test all new features in v1.1.0")
 
         try:
+            # 运行所有测试
             asyncio.run(run_all_tests())
         except KeyboardInterrupt:
             print("\n[Info] Test interrupted by user")
+        except OSError as e:
+            print("\n[Error] Hardware communication error:", e)
         except Exception as e:
-            print(f"\n[Error] Test failed: {e}")
+            print("\n[Error] Test failed:", e)
+        finally:
+            # 清理资源
+            print("\n[Info] Cleaning up resources...")
+            try:
+                tts.deinit()
+            except Exception:
+                pass
+            print("[Info] Test session completed")
 
-        print("\n[Info] Test session completed")

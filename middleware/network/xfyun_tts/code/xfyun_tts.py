@@ -14,6 +14,7 @@ import binascii
 import hashlib
 import struct
 import asyncio
+import micropython
 from async_websocketclient import AsyncWebsocketClient, URI
 
 # ======================================== 全局变量 ============================================
@@ -47,9 +48,10 @@ def _rfc1123_now():
     Returns:
         str: RFC1123-formatted time string, e.g. "Thu, 10 Apr 2026 12:00:00 GMT".
     """
+    # 获取 UTC 时间元组
     t = time.gmtime()
-    # gmtime() -> (year, month, mday, hour, minute, second, weekday, yearday)
-    # weekday: 0 = Monday, 6 = Sunday
+    # gmtime() 返回：(year, month, mday, hour, minute, second, weekday, yearday)
+    # weekday: 0=周一, 6=周日
     return "{wd}, {d:02d} {mon} {y} {h:02d}:{m:02d}:{s:02d} GMT".format(
         wd  = _WEEKDAYS[t[6]],
         d   = t[2],
@@ -84,11 +86,15 @@ def _hmac_sha256(key, msg):
         bytes: 32-byte HMAC-SHA256 digest.
     """
     block_size = 64
+    # 密钥长度超过块大小时先哈希
     if len(key) > block_size:
         key = hashlib.sha256(key).digest()
+    # 填充密钥到块大小
     key = key + b'\x00' * (block_size - len(key))
+    # 构造内外层密钥
     o_key_pad = bytes(b ^ 0x5C for b in key)
     i_key_pad = bytes(b ^ 0x36 for b in key)
+    # 计算 HMAC
     inner = hashlib.sha256(i_key_pad + msg).digest()
     return hashlib.sha256(o_key_pad + inner).digest()
 
@@ -121,6 +127,7 @@ def _url_encode(s):
         if ch in _safe:
             out.append(ch)
         else:
+            # UTF-8 编码后逐字节转义
             for byte in ch.encode('utf-8'):
                 out.append('%{:02X}'.format(byte))
     return ''.join(out)
@@ -152,8 +159,10 @@ def _wav_header(sample_rate, channels, bits, data_size):
     Returns:
         bytes: 44-byte WAV file header.
     """
+    # 计算字节率和块对齐
     byte_rate   = sample_rate * channels * bits // 8
     block_align = channels * bits // 8
+    # 打包 WAV 头结构
     return struct.pack(
         '<4sI4s4sIHHIIHH4sI',
         b'RIFF', data_size + 36,
@@ -211,6 +220,7 @@ class _WsClient(AsyncWebsocketClient):
         Raises:
             ValueError: Raised when scheme is not ws or wss.
         """
+        # 判断协议类型
         if uri.startswith('wss://'):
             protocol     = 'wss'
             rest         = uri[6:]
@@ -222,6 +232,7 @@ class _WsClient(AsyncWebsocketClient):
         else:
             raise ValueError('Scheme not ws or wss')
 
+        # 分离主机部分和路径
         slash = rest.find('/')
         if slash == -1:
             hostpart = rest
@@ -230,6 +241,7 @@ class _WsClient(AsyncWebsocketClient):
             hostpart = rest[:slash]
             path     = rest[slash:]
 
+        # 分离主机名和端口
         colon = hostpart.find(':')
         if colon == -1:
             hostname = hostpart
@@ -239,6 +251,7 @@ class _WsClient(AsyncWebsocketClient):
             port     = int(hostpart[colon + 1:])
 
         return URI(protocol, hostname, port, path)
+
 
 
 class XfyunTTS:
@@ -262,6 +275,27 @@ class XfyunTTS:
         _rdn        (str): 数字发音方式 [0-3]。
         _sfl        (int): 流式返回 mp3（配合 aue=lame）。
         _ws         (AsyncWebsocketClient): 内部 WebSocket 客户端实例。
+        _debug      (bool): 调试日志开关。
+
+    Methods:
+        set_voice(vcn): 设置发音人
+        set_speed(speed): 设置语速
+        set_volume(volume): 设置音量
+        set_pitch(pitch): 设置音高
+        set_background_sound(enabled): 设置背景音
+        set_audio_encoding(aue, sfl): 设置音频编码
+        set_sample_rate(rate): 设置采样率
+        set_text_encoding(tte): 设置文本编码
+        set_english_pronunciation(reg): 设置英文发音方式
+        set_digit_pronunciation(rdn): 设置数字发音方式
+        synthesize(text, filepath): 合成音频并保存到文件
+        synthesize_and_play(text, audio_out, amp_sd, rate): 合成音频并实时播放
+        deinit(): 释放资源
+
+    Notes:
+        - 中间件库，不涉及硬件总线操作
+        - 所有 setter 方法支持链式调用
+        - 调用前需确保 WiFi 已连接且 NTP 时间已同步
 
     ==========================================
 
@@ -284,35 +318,56 @@ class XfyunTTS:
         _rdn        (str): Digit pronunciation mode [0-3].
         _sfl        (int): Stream mp3 (with aue=lame).
         _ws         (AsyncWebsocketClient): Internal WebSocket client instance.
+        _debug      (bool): Debug logging switch.
+
+    Methods:
+        set_voice(vcn): Set voice name
+        set_speed(speed): Set speech speed
+        set_volume(volume): Set volume
+        set_pitch(pitch): Set pitch
+        set_background_sound(enabled): Set background sound
+        set_audio_encoding(aue, sfl): Set audio encoding
+        set_sample_rate(rate): Set sample rate
+        set_text_encoding(tte): Set text encoding
+        set_english_pronunciation(reg): Set English pronunciation mode
+        set_digit_pronunciation(rdn): Set digit pronunciation mode
+        synthesize(text, filepath): Synthesize audio and save to file
+        synthesize_and_play(text, audio_out, amp_sd, rate): Synthesize and play in real-time
+        deinit(): Release resources
+
+    Notes:
+        - Middleware library, no hardware bus operations
+        - All setter methods support method chaining
+        - WiFi connection and NTP time sync required before calling
     """
 
     # 发音人常量 / Voice constants
-    VOICE_XIAOYAN = "x4_xiaoyan"      # 讯飞小燕
-    VOICE_YEZI = "x4_yezi"            # 讯飞小露
-    VOICE_JIUXU = "aisjiuxu"          # 讯飞许久
-    VOICE_JINGER = "aisjinger"        # 讯飞小婧
-    VOICE_BABYXU = "aisbabyxu"        # 讯飞许小宝
+    VOICE_XIAOYAN = "x4_xiaoyan"
+    VOICE_YEZI = "x4_yezi"
+    VOICE_JIUXU = "aisjiuxu"
+    VOICE_JINGER = "aisjinger"
+    VOICE_BABYXU = "aisbabyxu"
 
     # 音频编码常量 / Audio encoding constants
-    AUE_RAW = "raw"                   # 原始 PCM
-    AUE_LAME = "lame"                 # MP3
-    AUE_OPUS = "opus"                 # Opus 8k
-    AUE_OPUS_WB = "opus-wb"           # Opus 16k
-    AUE_SPEEX = "speex;7"             # 讯飞定制 Speex 8k
-    AUE_SPEEX_WB = "speex-wb;7"       # 讯飞定制 Speex 16k
+    AUE_RAW = "raw"
+    AUE_LAME = "lame"
+    AUE_OPUS = "opus"
+    AUE_OPUS_WB = "opus-wb"
+    AUE_SPEEX = "speex;7"
+    AUE_SPEEX_WB = "speex-wb;7"
 
     # 采样率常量 / Sample rate constants
     AUF_8K = "audio/L16;rate=8000"
     AUF_16K = "audio/L16;rate=16000"
 
     # 默认值常量 / Default value constants
-    DEFAULT_SPEED = 50
-    DEFAULT_VOLUME = 50
-    DEFAULT_PITCH = 50
+    DEFAULT_SPEED = micropython.const(50)
+    DEFAULT_VOLUME = micropython.const(50)
+    DEFAULT_PITCH = micropython.const(50)
 
     def __init__(self, app_id, api_key, api_secret,
                  vcn="x4_xiaoyan", aue="raw", auf="audio/L16;rate=8000",
-                 speed=50, volume=50, pitch=50, **kwargs):
+                 speed=50, volume=50, pitch=50, debug=False, **kwargs) -> None:
         """
         初始化 TTS 驱动，保存鉴权参数与音频配置。
 
@@ -326,12 +381,16 @@ class XfyunTTS:
             speed      (int): 语速 [0-100]，默认 50。
             volume     (int): 音量 [0-100]，默认 50。
             pitch      (int): 音高 [0-100]，默认 50。
+            debug      (bool): 调试日志开关，默认 False。
             **kwargs: 高级参数
                 bgs (int): 背景音 0/1，默认 0。
                 tte (str): 文本编码，默认 "UTF8"。
                 reg (str): 英文发音方式 [0-2]，默认 "0"。
                 rdn (str): 数字发音方式 [0-3]，默认 "0"。
                 sfl (int): 流式返回 mp3（配合 aue=lame），默认 None。
+
+        Raises:
+            ValueError: 凭证参数为 None 或类型错误时抛出。
 
         ==========================================
 
@@ -347,13 +406,33 @@ class XfyunTTS:
             speed      (int): Speech speed [0-100], default 50.
             volume     (int): Volume [0-100], default 50.
             pitch      (int): Pitch [0-100], default 50.
+            debug      (bool): Debug logging switch, default False.
             **kwargs: Advanced parameters
                 bgs (int): Background sound 0/1, default 0.
                 tte (str): Text encoding, default "UTF8".
                 reg (str): English pronunciation [0-2], default "0".
                 rdn (str): Digit pronunciation [0-3], default "0".
                 sfl (int): Stream mp3 (with aue=lame), default None.
+
+        Raises:
+            ValueError: Raised when credential parameters are None or wrong type.
         """
+        # 中间件库强制校验：凭证参数 None 检查 + 类型检查
+        if app_id is None:
+            raise ValueError("app_id cannot be None")
+        if not isinstance(app_id, str):
+            raise ValueError("app_id must be str, got %s" % type(app_id))
+
+        if api_key is None:
+            raise ValueError("api_key cannot be None")
+        if not isinstance(api_key, str):
+            raise ValueError("api_key must be str, got %s" % type(api_key))
+
+        if api_secret is None:
+            raise ValueError("api_secret cannot be None")
+        if not isinstance(api_secret, str):
+            raise ValueError("api_secret must be str, got %s" % type(api_secret))
+
         # 必需参数 / Required parameters
         self._app_id     = app_id
         self._api_key    = api_key
@@ -374,12 +453,15 @@ class XfyunTTS:
         self._rdn = kwargs.get('rdn', "0")
         self._sfl = kwargs.get('sfl', None)
 
+        # 调试开关 / Debug switch
+        self._debug = debug
+
         # WebSocket 客户端 / WebSocket client
         self._ws = _WsClient(ms_delay_for_read=5)
 
-    # ========== 动态设置方法 / Dynamic configuration methods ==========
+    # ========== 公共方法 / Public methods ==========
 
-    def set_voice(self, vcn):
+    def set_voice(self, vcn) -> 'XfyunTTS':
         """
         设置发音人，下次合成时生效。
 
@@ -387,7 +469,7 @@ class XfyunTTS:
             vcn (str): 发音人参数值，如 "x4_xiaoyan"。
 
         Returns:
-            self: 支持链式调用。
+            XfyunTTS: 支持链式调用。
 
         ==========================================
 
@@ -397,12 +479,12 @@ class XfyunTTS:
             vcn (str): Voice parameter, e.g. "x4_xiaoyan".
 
         Returns:
-            self: Supports method chaining.
+            XfyunTTS: Supports method chaining.
         """
         self._vcn = vcn
         return self
 
-    def set_speed(self, speed):
+    def set_speed(self, speed) -> 'XfyunTTS':
         """
         设置语速 [0-100]，下次合成时生效。
 
@@ -410,7 +492,7 @@ class XfyunTTS:
             speed (int): 语速值，范围 [0-100]。
 
         Returns:
-            self: 支持链式调用。
+            XfyunTTS: 支持链式调用。
 
         Raises:
             ValueError: 参数超出范围时抛出。
@@ -423,7 +505,7 @@ class XfyunTTS:
             speed (int): Speed value in range [0-100].
 
         Returns:
-            self: Supports method chaining.
+            XfyunTTS: Supports method chaining.
 
         Raises:
             ValueError: Raised when parameter is out of range.
@@ -433,7 +515,7 @@ class XfyunTTS:
         self._speed = speed
         return self
 
-    def set_volume(self, volume):
+    def set_volume(self, volume) -> 'XfyunTTS':
         """
         设置音量 [0-100]，下次合成时生效。
 
@@ -441,7 +523,7 @@ class XfyunTTS:
             volume (int): 音量值，范围 [0-100]。
 
         Returns:
-            self: 支持链式调用。
+            XfyunTTS: 支持链式调用。
 
         Raises:
             ValueError: 参数超出范围时抛出。
@@ -454,7 +536,7 @@ class XfyunTTS:
             volume (int): Volume value in range [0-100].
 
         Returns:
-            self: Supports method chaining.
+            XfyunTTS: Supports method chaining.
 
         Raises:
             ValueError: Raised when parameter is out of range.
@@ -464,7 +546,7 @@ class XfyunTTS:
         self._volume = volume
         return self
 
-    def set_pitch(self, pitch):
+    def set_pitch(self, pitch) -> 'XfyunTTS':
         """
         设置音高 [0-100]，下次合成时生效。
 
@@ -472,7 +554,7 @@ class XfyunTTS:
             pitch (int): 音高值，范围 [0-100]。
 
         Returns:
-            self: 支持链式调用。
+            XfyunTTS: 支持链式调用。
 
         Raises:
             ValueError: 参数超出范围时抛出。
@@ -485,7 +567,7 @@ class XfyunTTS:
             pitch (int): Pitch value in range [0-100].
 
         Returns:
-            self: Supports method chaining.
+            XfyunTTS: Supports method chaining.
 
         Raises:
             ValueError: Raised when parameter is out of range.
@@ -495,7 +577,7 @@ class XfyunTTS:
         self._pitch = pitch
         return self
 
-    def set_background_sound(self, enabled):
+    def set_background_sound(self, enabled) -> 'XfyunTTS':
         """
         设置背景音，下次合成时生效。
 
@@ -503,7 +585,7 @@ class XfyunTTS:
             enabled (bool): True 开启背景音，False 关闭背景音。
 
         Returns:
-            self: 支持链式调用。
+            XfyunTTS: 支持链式调用。
 
         ==========================================
 
@@ -513,12 +595,12 @@ class XfyunTTS:
             enabled (bool): True to enable, False to disable.
 
         Returns:
-            self: Supports method chaining.
+            XfyunTTS: Supports method chaining.
         """
         self._bgs = 1 if enabled else 0
         return self
 
-    def set_audio_encoding(self, aue, sfl=None):
+    def set_audio_encoding(self, aue, sfl=None) -> 'XfyunTTS':
         """
         设置音频编码格式，下次合成时生效。
 
@@ -527,7 +609,7 @@ class XfyunTTS:
             sfl (int, optional): 流式返回 mp3，仅在 aue="lame" 时有效。
 
         Returns:
-            self: 支持链式调用。
+            XfyunTTS: 支持链式调用。
 
         ==========================================
 
@@ -538,13 +620,13 @@ class XfyunTTS:
             sfl (int, optional): Stream mp3, only valid when aue="lame".
 
         Returns:
-            self: Supports method chaining.
+            XfyunTTS: Supports method chaining.
         """
         self._aue = aue
         self._sfl = sfl if aue == "lame" else None
         return self
 
-    def set_sample_rate(self, rate):
+    def set_sample_rate(self, rate) -> 'XfyunTTS':
         """
         设置采样率，下次合成时生效。
 
@@ -552,7 +634,7 @@ class XfyunTTS:
             rate (int): 采样率，支持 8000 或 16000。
 
         Returns:
-            self: 支持链式调用。
+            XfyunTTS: 支持链式调用。
 
         Raises:
             ValueError: 参数不是 8000 或 16000 时抛出。
@@ -565,7 +647,7 @@ class XfyunTTS:
             rate (int): Sample rate, 8000 or 16000.
 
         Returns:
-            self: Supports method chaining.
+            XfyunTTS: Supports method chaining.
 
         Raises:
             ValueError: Raised when rate is not 8000 or 16000.
@@ -578,7 +660,7 @@ class XfyunTTS:
             raise ValueError("rate must be 8000 or 16000")
         return self
 
-    def set_text_encoding(self, tte):
+    def set_text_encoding(self, tte) -> 'XfyunTTS':
         """
         设置文本编码格式，下次合成时生效。
 
@@ -586,7 +668,7 @@ class XfyunTTS:
             tte (str): 文本编码，如 "UTF8"、"GBK"、"GB2312" 等。
 
         Returns:
-            self: 支持链式调用。
+            XfyunTTS: 支持链式调用。
 
         ==========================================
 
@@ -596,12 +678,12 @@ class XfyunTTS:
             tte (str): Text encoding, e.g. "UTF8", "GBK", "GB2312".
 
         Returns:
-            self: Supports method chaining.
+            XfyunTTS: Supports method chaining.
         """
         self._tte = tte
         return self
 
-    def set_english_pronunciation(self, reg):
+    def set_english_pronunciation(self, reg) -> 'XfyunTTS':
         """
         设置英文发音方式，下次合成时生效。
 
@@ -612,7 +694,7 @@ class XfyunTTS:
                 "2": 自动判断，不确定按字母发音
 
         Returns:
-            self: 支持链式调用。
+            XfyunTTS: 支持链式调用。
 
         Raises:
             ValueError: 参数不是 "0"、"1" 或 "2" 时抛出。
@@ -628,7 +710,7 @@ class XfyunTTS:
                 "2": Auto, default to letter pronunciation
 
         Returns:
-            self: Supports method chaining.
+            XfyunTTS: Supports method chaining.
 
         Raises:
             ValueError: Raised when reg is not "0", "1", or "2".
@@ -638,7 +720,7 @@ class XfyunTTS:
         self._reg = reg
         return self
 
-    def set_digit_pronunciation(self, rdn):
+    def set_digit_pronunciation(self, rdn) -> 'XfyunTTS':
         """
         设置数字发音方式，下次合成时生效。
 
@@ -650,7 +732,7 @@ class XfyunTTS:
                 "3": 字符串优先
 
         Returns:
-            self: 支持链式调用。
+            XfyunTTS: 支持链式调用。
 
         Raises:
             ValueError: 参数不是 "0"、"1"、"2" 或 "3" 时抛出。
@@ -667,7 +749,7 @@ class XfyunTTS:
                 "3": String priority
 
         Returns:
-            self: Supports method chaining.
+            XfyunTTS: Supports method chaining.
 
         Raises:
             ValueError: Raised when rdn is not "0", "1", "2", or "3".
@@ -677,7 +759,24 @@ class XfyunTTS:
         self._rdn = rdn
         return self
 
-    # ========== 内部方法 / Internal methods ==========
+    # ========== 私有方法 / Private methods ==========
+
+    def _log(self, msg: str) -> None:
+        """
+        调试日志输出，受 debug 开关控制。
+
+        Args:
+            msg (str): 日志消息。
+
+        ==========================================
+
+        Debug log output, controlled by debug switch.
+
+        Args:
+            msg (str): Log message.
+        """
+        if self._debug:
+            print("[XfyunTTS]", msg)
 
     def _build_auth_url(self):
         """
@@ -693,23 +792,25 @@ class XfyunTTS:
         Returns:
             str: WSS URL containing authorization, date, and host query parameters.
         """
+        # 获取 RFC1123 格式时间戳
         date = _rfc1123_now()
 
-        # Signature origin string per iFlytek docs
+        # 构造签名原文（按讯飞文档规范）
         sig_origin = "host: {}\ndate: {}\nGET {} HTTP/1.1".format(_HOST, date, _PATH)
 
-        # Decode API Secret from Base64, then HMAC-SHA256 sign
+        # API Secret 编码后进行 HMAC-SHA256 签名
         secret_bytes = self._api_secret.encode('utf-8')
         sig_bytes    = _hmac_sha256(secret_bytes, sig_origin.encode('utf-8'))
         sig_b64      = binascii.b2a_base64(sig_bytes).decode('utf-8').strip()
 
-        # Build authorization string and Base64-encode it
+        # 构造鉴权字符串并 Base64 编码
         auth_origin = (
             'api_key="{}", algorithm="hmac-sha256", '
             'headers="host date request-line", signature="{}"'
         ).format(self._api_key, sig_b64)
         auth_b64 = binascii.b2a_base64(auth_origin.encode('utf-8')).decode('utf-8').strip()
 
+        # 拼接完整 URL（含鉴权参数）
         url = "{}?authorization={}&date={}&host={}".format(
             _WSS_URL,
             _url_encode(auth_b64),
@@ -738,7 +839,10 @@ class XfyunTTS:
         Returns:
             str: JSON-formatted request string.
         """
+        # 文本 Base64 编码
         text_b64 = binascii.b2a_base64(text.encode('utf-8')).decode('utf-8').strip()
+
+        # 构造请求 JSON
         req = {
             "common": {
                 "app_id": self._app_id,
@@ -760,7 +864,7 @@ class XfyunTTS:
                 "status": 2,
             },
         }
-        # sfl 仅在 aue=lame 时添加 / Add sfl only when aue=lame
+        # sfl 仅在 aue=lame 时添加
         if self._sfl is not None:
             req["business"]["sfl"] = self._sfl
         return json.dumps(req)
@@ -802,75 +906,93 @@ class XfyunTTS:
             WiFi must be connected and system time NTP-synced before calling.
             Server status==2 marks the final chunk; connection is closed afterward.
         """
+        # 构造鉴权 URL
         url = self._build_auth_url()
-        print("Connecting to iFlytek TTS...")
+        self._log("Connecting to iFlytek TTS...")
 
+        # 关闭旧连接并创建新客户端
         try:
             await self._ws.close()
         except Exception:
             pass
         self._ws = _WsClient(ms_delay_for_read=5)
+
+        # WebSocket 握手
         try:
             await self._ws.handshake(url, cert_reqs=0)
         except Exception as e:
-            print("Handshake failed:", e)
+            self._log("Handshake failed: %s" % e)
             return 0 if filepath else b""
 
-        print("Connected, sending request...")
+        # 发送合成请求
+        self._log("Connected, sending request...")
         await self._ws.send(self._build_request(text))
 
+        # 判断是否为 WAV 格式输出
         is_wav       = filepath is not None and filepath.lower().endswith('.wav')
         total_bytes  = 0
         audio_chunks = [] if filepath is None else None
         f            = open(filepath, "wb") if filepath else None
+
+        # WAV 格式先写占位头
         if is_wav:
             try:
                 sample_rate = int(self._auf.split('rate=')[1])
             except Exception:
                 sample_rate = 8000
-            f.write(_wav_header(sample_rate, 1, 16, 0))  # placeholder, fixed after streaming
-        print("Receiving audio chunks...")
+            f.write(_wav_header(sample_rate, 1, 16, 0))
 
+        self._log("Receiving audio chunks...")
+
+        # 流式接收音频数据
         try:
             while await self._ws.open():
+                # 等待服务端消息（超时 10 秒）
                 msg = await asyncio.wait_for(self._ws.recv(), 10)
                 if msg is None:
-                    print("Connection closed by server.")
+                    self._log("Connection closed by server.")
                     break
 
+                # 解析 JSON 响应
                 try:
                     resp = json.loads(msg)
                 except Exception as e:
-                    print("JSON parse error:", e)
+                    self._log("JSON parse error: %s" % e)
                     break
 
+                # 检查错误码
                 code = resp.get("code", -1)
                 if code != 0:
-                    print("TTS API error, code:", code, "msg:", resp.get("message", ""))
+                    self._log("TTS API error, code: %d, msg: %s" % (code, resp.get("message", "")))
                     break
 
+                # 提取音频数据
                 audio_section = resp.get("data", {})
                 audio_b64     = audio_section.get("audio", "")
                 if audio_b64:
+                    # Base64 解码音频块
                     chunk = binascii.a2b_base64(audio_b64)
                     total_bytes += len(chunk)
                     if f:
                         f.write(chunk)
                     else:
                         audio_chunks.append(chunk)
-                    print("Chunk received, bytes:", len(chunk))
+                    self._log("Chunk received, bytes: %d" % len(chunk))
 
+                # 检查是否为最后一帧
                 status = audio_section.get("status", 0)
                 if status == 2:
-                    print("All audio received, total bytes:", total_bytes)
+                    self._log("All audio received, total bytes: %d" % total_bytes)
                     break
         finally:
+            # WAV 格式回写正确的文件头
             if is_wav and f:
                 f.seek(0)
                 f.write(_wav_header(sample_rate, 1, 16, total_bytes))
             if f:
                 f.close()
 
+        # 关闭 WebSocket 连接
         await self._ws.close()
         return total_bytes if filepath else b"".join(audio_chunks)
 
@@ -887,45 +1009,79 @@ class XfyunTTS:
 
         Returns:
             int: 实际写入 I2S 的总字节数；失败返回 0。
-        """
-        url = self._build_auth_url()
-        print("[TTS] Connecting...")
 
-        # 确保旧连接彻底关闭再新建，避免 socket 资源耗尽
+        Notes:
+            - 实时播放模式，边合成边播放
+            - 需要硬件支持 I2S 音频输出
+            - 功放 SD 引脚自动控制开关
+
+        ==========================================
+
+        Connect to iFlytek TTS and write each audio chunk to I2S immediately,
+        reducing first-byte latency by ~1-2 seconds compared to synthesize()+play_pcm().
+
+        Args:
+            text      (str): Text to synthesize.
+            audio_out (I2S): Initialized I2S TX instance.
+            amp_sd    (Pin): Amplifier SD pin, set high before synthesis, low after playback.
+            rate      (int): Sample rate, default 16000, used to calculate tail wait time.
+
+        Returns:
+            int: Total bytes written to I2S; 0 on failure.
+
+        Notes:
+            - Real-time playback mode, synthesize and play simultaneously
+            - Requires I2S audio output hardware support
+            - Amplifier SD pin automatically controlled
+        """
+        # 构造鉴权 URL
+        url = self._build_auth_url()
+        self._log("Connecting...")
+
+        # 关闭旧连接并创建新客户端，避免 socket 资源耗尽
         try:
             await self._ws.close()
         except Exception:
             pass
         self._ws = _WsClient(ms_delay_for_read=5)
+
+        # WebSocket 握手（超时 10 秒）
         try:
             await asyncio.wait_for(self._ws.handshake(url, cert_reqs=0), 10)
         except Exception as e:
-            print("[TTS] Handshake failed:", e)
+            self._log("Handshake failed: %s" % e)
             return 0
 
+        # 发送合成请求
         await self._ws.send(self._build_request(text))
 
+        # 开启功放
         amp_sd.value(1)
         total_bytes = 0
         swriter = asyncio.StreamWriter(audio_out)
-        print("[TTS] Streaming audio...")
+        self._log("Streaming audio...")
 
+        # 流式接收并实时播放
         try:
             while await self._ws.open():
+                # 等待服务端消息（超时 10 秒）
                 msg = await asyncio.wait_for(self._ws.recv(), 10)
                 if msg is None:
                     break
 
+                # 解析 JSON 响应
                 try:
                     resp = json.loads(msg)
                 except Exception:
                     break
 
+                # 检查错误码
                 code = resp.get("code", -1)
                 if code != 0:
-                    print("[TTS] API error:", code, resp.get("message", ""))
+                    self._log("API error: %d, %s" % (code, resp.get("message", "")))
                     break
 
+                # 提取音频数据并立即写入 I2S
                 audio_section = resp.get("data", {})
                 audio_b64     = audio_section.get("audio", "")
                 if audio_b64:
@@ -934,21 +1090,51 @@ class XfyunTTS:
                     await swriter.drain()
                     total_bytes += len(chunk)
 
+                # 检查是否为最后一帧
                 if audio_section.get("status", 0) == 2:
                     break
         finally:
             pass
 
+        # 关闭 WebSocket 连接
         await self._ws.close()
 
         # 等待 I2S 缓冲区中剩余数据播完
         ibuf_ms = total_bytes * 1000 // (rate * 2)
         await asyncio.sleep_ms(ibuf_ms + 200)
+
+        # 关闭功放
         amp_sd.value(0)
         await asyncio.sleep_ms(300)
-        print("[TTS] Done, {} bytes".format(total_bytes))
+
+        self._log("Done, %d bytes" % total_bytes)
         return total_bytes
+
+    def deinit(self) -> None:
+        """
+        释放资源，关闭 WebSocket 连接。
+
+        Notes:
+            - 调用后驱动实例不可再使用
+            - 建议在程序退出前调用
+
+        ==========================================
+
+        Release resources and close WebSocket connection.
+
+        Notes:
+            - Driver instance cannot be used after calling
+            - Recommended to call before program exit
+        """
+        try:
+            # 同步关闭 WebSocket（使用 asyncio.run 包装）
+            asyncio.run(self._ws.close())
+        except Exception:
+            pass
+        self._log("Resources released")
+
 
 # ======================================== 初始化配置 ===========================================
 
 # ========================================  主程序  ===========================================
+
