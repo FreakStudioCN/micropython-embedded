@@ -1,6 +1,6 @@
 {
   "name": "volcengine_tts_v1_ws",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Volcengine TTS V1 WebSocket client for MicroPython, supports streaming and non-streaming synthesis",
   "author": "AI Assistant",
   "license": "MIT",

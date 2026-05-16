@@ -15,7 +15,7 @@ from async_websocketclient import AsyncWebsocketClient
 
 # ======================================== 全局变量 ============================================
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __author__ = "AI Assistant"
 __license__ = "MIT"
 __platform__ = "MicroPython v1.23"
@@ -391,6 +391,7 @@ class VolcengineTTSV1WS:
                 # 读取 4 字节 sequence number (big-endian signed int)
                 sequence = struct.unpack(">i", data[offset : offset + 4])[0]
                 offset += 4
+                offset += 4  # skip payload_size field
 
             # 剩余数据是音频
             audio_data = data[offset:]
