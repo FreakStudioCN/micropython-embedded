@@ -48,7 +48,7 @@
 |------|------|
 | 主控 | 树莓派 Pico 2W（或其他支持 WiFi 的 MicroPython 设备） |
 | 固件 | MicroPython v1.23.0 及以上 |
-| 网络 | 2.4GHz WiFi，需能访问 `iat.xf-yun.com`（讯飞 ASR 服务） |
+| 网络 | 2.4GHz WiFi，需能访问 `iat.cn-huabei-1.xf-yun.com`（讯飞 ASR 服务） |
 | 额外硬件 | 无（纯软件库，不依赖任何外设） |
 
 ---
@@ -69,7 +69,7 @@ xfyun_asr/
 |------|------|
 | `code/xfyun_asr.py` | 驱动核心类 `XfyunASR`，包含鉴权、帧构造、流式发送与结果解析全部逻辑 |
 | `code/main.py` | 完整使用示例，演示 WiFi 连接、NTP 同步、TTS 合成 + ASR 识别的完整流程 |
-| `package.json` | mip 包描述文件，声明包名、版本、作者及对 `async_websocket_client` 的依赖 |
+| `package.json` | mip 包描述文件，声明包名、版本、作者及对 `async_websocket_client` 的可安装依赖 |
 | `LICENSE` | MIT 开源协议文本 |
 
 ---
@@ -84,7 +84,7 @@ xfyun_asr/
 获取当前 UTC 时间（RFC1123 格式，依赖 NTP 同步）
     ↓
 构造签名原文：
-    "host: iat.xf-yun.com\n
+    "host: iat.cn-huabei-1.xf-yun.com\n
      date: {RFC1123 时间}\n
      GET /v1 HTTP/1.1"
     ↓
@@ -140,18 +140,20 @@ MicroPython 的 asyncio 是单线程协程，无法真正并发发送和接收�
 前往 [upypi.net](https://upypi.net) 搜索 `async_websocket_client`，复制安装命令后在终端运行，例如：
 
 ```bash
-mpremote mip install https://upypi.net/pkgs/async_websocket_client/1.0.0
+mpremote mip install https://upypi.net/pkgs/async_websocket_client/1.0.2
 ```
+
+> 当前驱动源码依赖 `fastb64`（`from fastb64 import b64encode_str, b64decode`），但 `fastb64` 当前未作为 uPyPI package 提供，不能通过 `package.json` 的 `deps` 自动安装。使用前请确认目标 MicroPython 固件是否已经内置/冻结 `fastb64`；如果执行 `import fastb64` 报 `ImportError`，说明当前环境缺少该模块。
 
 **2. 安装 `xfyun_tts`**（`main.py` 中同时演示了 TTS，需要此库）
 
 前往 [upypi.net](https://upypi.net) 搜索 `xfyun_tts`，复制安装命令后在终端运行，例如：
 
 ```bash
-mpremote mip install https://upypi.net/pkgs/xfyun_tts/1.0.0
+mpremote mip install https://upypi.net/pkgs/xfyun_tts/1.2.1
 ```
 
-> 如果你只使用 `XfyunASR` 而不使用 TTS，则仅需安装 `async_websocket_client`。
+> 如果你只使用 `XfyunASR` 而不使用 TTS，则仅需安装 `async_websocket_client`；`fastb64` 仍需由目标运行环境提供。
 
 ### 第二步：部署驱动文件
 
@@ -199,7 +201,9 @@ print(text)
 | 方法 | 参数 | 返回值 | 说明 |
 |------|------|--------|------|
 | `XfyunASR(app_id, api_key, api_secret, ...)` | 见下表 | 实例 | 初始化驱动 |
-| `await recognize(filepath)` | `filepath`: PCM 文件路径 | `str` | 识别并返回文字 |
+| `await recognize(filepath, pace_ms=0, recv_timeout_ms=12000)` | `filepath`: PCM 文件路径 | `str` | 识别并返回文字 |
+| `await recognize_streaming(filepath)` | `filepath`: PCM 文件路径 | `str` | 兼容旧流式识别调用 |
+| `await recognize_mic(codec, max_ms=15000, prelisten_ms=3000)` | `codec`: 录音设备 | `str` | 使用本地 VAD 录音并识别 |
 
 ### 初始化参数说明
 
@@ -210,7 +214,7 @@ print(text)
 | `api_secret` | str | — | API Secret（平台提供的原始字符串） |
 | `sample_rate` | int | `16000` | 音频采样率，`8000` 或 `16000` |
 | `accent` | str | `"mandarin"` | 口音/方言（如 `"cantonese"`、`"sichuan"`） |
-| `eos` | int | `6000` | 静音停止阈值（毫秒，范围 500~60000） |
+| `eos` | int | `800` | 静音停止阈值（毫秒，范围 500~60000） |
 
 ---
 

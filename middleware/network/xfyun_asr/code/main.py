@@ -185,7 +185,7 @@ asr = XfyunASR(
     app_id      = ASR_APPID,
     api_key     = ASR_API_KEY,
     api_secret  = ASR_API_SECRET,
-    sample_rate = 8000,
+    sample_rate = 16000,
 )
 
 # ========================================  主程序  ===========================================

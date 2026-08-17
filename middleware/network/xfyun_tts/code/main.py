@@ -368,7 +368,7 @@ async def run_all_tests():
     global audio_out, amp_sd
 
     print("\n" + "="*60)
-    print("XfyunTTS v1.1.0 Comprehensive Test Suite")
+    print("XfyunTTS v1.2.1 Comprehensive Test Suite")
     print("="*60)
 
     # 初始化 I2S 音频输出
@@ -418,7 +418,7 @@ async def run_all_tests():
 # ======================================== 初始化配置 ===========================================
 
 time.sleep(3)
-print("FreakStudio: Testing XfyunTTS v1.1.0 driver...")
+print("FreakStudio: Testing XfyunTTS v1.2.1 driver...")
 
 # 实例化 TTS 驱动
 tts = XfyunTTS(
@@ -431,7 +431,7 @@ tts = XfyunTTS(
 
 if __name__ == "__main__":
     print("\n" + "="*60)
-    print("XfyunTTS v1.1.0 Comprehensive Test")
+    print("XfyunTTS v1.2.1 Comprehensive Test")
     print("="*60)
 
     # 连接 WiFi
@@ -442,7 +442,7 @@ if __name__ == "__main__":
         sync_ntp()
 
         print("\n[Info] Starting comprehensive test suite...")
-        print("[Info] This will test all new features in v1.1.0")
+        print("[Info] This will test all new features in v1.2.1")
 
         try:
             # 运行所有测试
