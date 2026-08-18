@@ -28,6 +28,7 @@ TTS_API_SECRET = "your_tts_api_secret"
 ASR_APPID = "your_asr_appid"
 ASR_API_KEY = "your_asr_api_key"
 ASR_API_SECRET = "your_asr_api_secret"
+CA_FILE = "ca.pem"  # Replace with your CA certificate path for iFlytek WSS.
 
 OUTPUT_PCM = "output.pcm"
 OUTPUT_WAV = "output.wav"
@@ -49,6 +50,8 @@ asr = XfyunASR(
     api_key=ASR_API_KEY,
     api_secret=ASR_API_SECRET,
     sample_rate=16000,
+    cafile=CA_FILE,
+    cert_reqs=2,
 )
 
 # ========================================  主程序  ============================================
