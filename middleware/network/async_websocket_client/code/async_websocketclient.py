@@ -32,7 +32,7 @@ OP_TEXT = const(0x1)
 OP_BYTES = const(0x2)
 OP_CLOSE = const(0x8)
 OP_PING = const(0x9)
-OP_PONG = const(0xA)
+OP_PONG = const(0xa)
 
 # Close codes
 CLOSE_OK = const(1000)
@@ -45,13 +45,69 @@ CLOSE_TOO_BIG = const(1009)
 CLOSE_MISSING_EXTN = const(1010)
 CLOSE_BAD_CONDITION = const(1011)
 
-URL_RE = re.compile(r"(wss|ws)://([A-Za-z0-9-\.]+)(?:\:([0-9]+))?(/.+)?")
-URI = namedtuple("URI", ("protocol", "hostname", "port", "path"))
+URL_RE = re.compile(r'(wss|ws)://([A-Za-z0-9-\.]+)(?:\:([0-9]+))?(/.+)?')
+URI = namedtuple('URI', ('protocol', 'hostname', 'port', 'path'))
+
+# 掩码算法切换阈值：超过此长度改用原地循环，避免超大 bigint 运算退化
+_MASK_BIGINT_LIMIT = const(8192)
 
 # ======================================== 功能函数 ============================================
 
-# ======================================== 自定义类 ============================================
 
+def _mask_payload(data, mask_bits):
+    """
+    对 WebSocket 载荷做 RFC6455 掩码运算，使用 bigint 整体 XOR 加速。
+
+    逐字节生成器在 T5AI 上处理 1832 字节需 16.5ms（占 40ms 帧预算的 42%）；
+    转成 bigint 做一次 C 层 XOR 只需 0.8ms，输出完全一致，掩码仍为真随机。
+
+    Args:
+        data      (bytes): 待掩码的原始载荷。
+        mask_bits (bytes): 4 字节掩码密钥。
+
+    Returns:
+        bytes: 掩码后的载荷，长度与输入相同。
+
+    ==========================================
+
+    Apply the RFC6455 client mask to a payload, using one big-integer XOR.
+
+    The per-byte generator costs 16.5ms for 1832 bytes on the T5AI (42% of a
+    40ms frame budget); a single bigint XOR costs 0.8ms with identical output
+    and a still-random mask key.
+
+    Args:
+        data      (bytes): Raw payload to mask.
+        mask_bits (bytes): 4-byte masking key.
+
+    Returns:
+        bytes: Masked payload, same length as the input.
+    """
+    n = len(data)
+    if n == 0:
+        return data
+    # 超长载荷退回原地循环：bigint 位宽过大时反而更慢
+    if n > _MASK_BIGINT_LIMIT:
+        out = bytearray(data)
+        k0, k1, k2, k3 = mask_bits[0], mask_bits[1], mask_bits[2], mask_bits[3]
+        i = 0
+        while i + 4 <= n:
+            out[i]     ^= k0
+            out[i + 1] ^= k1
+            out[i + 2] ^= k2
+            out[i + 3] ^= k3
+            i += 4
+        while i < n:
+            out[i] ^= mask_bits[i & 3]
+            i += 1
+        return bytes(out)
+
+    # 把 4 字节密钥重复铺满载荷长度，多余的高位右移掉
+    reps  = n // 4 + 1
+    wide  = int.from_bytes(mask_bits * reps, 'big') >> (8 * (reps * 4 - n))
+    return (int.from_bytes(data, 'big') ^ wide).to_bytes(n, 'big')
+
+# ======================================== 自定义类 ============================================
 
 class AsyncWebsocketClient:
     """
@@ -209,11 +265,11 @@ class AsyncWebsocketClient:
         if match:
             protocol, host, port, path = match.group(1), match.group(2), match.group(3), match.group(4)
 
-            if protocol not in ["ws", "wss"]:
-                raise ValueError("Scheme {} is invalid".format(protocol))
+            if protocol not in ['ws', 'wss']:
+                raise ValueError('Scheme {} is invalid'.format(protocol))
 
             if port is None:
-                port = (80, 443)[protocol == "wss"]
+                port = (80, 443)[protocol == 'wss']
 
             return URI(protocol, host, int(port), path)
 
@@ -240,7 +296,9 @@ class AsyncWebsocketClient:
         line = None
         while line is None:
             line = self.sock.readline()
-            await a.sleep_ms(self.delay_read)
+            # 仅在 socket 无数据时让出 CPU，拿到数据立即返回
+            if line is None:
+                await a.sleep_ms(self.delay_read)
 
         return line
 
@@ -271,31 +329,31 @@ class AsyncWebsocketClient:
             Loops until cumulative bytes reach size, yielding CPU via sleep_ms.
         """
         if size == 0:
-            return b""
+            return b''
         chunks = []
 
         while True:
             b = self.sock.read(size)
-            await a.sleep_ms(self.delay_read)
 
-            # Continue reading if the socket returns None
+            # 仅在 socket 无数据时才 sleep 让出 CPU。
+            # 原实现每次 read 后无条件 sleep(5ms)，一条需分多次读的消息
+            # 会白等 N×5ms；mbedtls 分片返回时这是主要的收包延迟来源。
             if b is None:
+                await a.sleep_ms(self.delay_read)
                 continue
 
             # In some cases, the socket will return an empty bytes
             # after PING or PONG frames, we need to ignore them.
-            if len(b) == 0:
-                break
+            if len(b) == 0: break
 
             chunks.append(b)
             size -= len(b)
 
             # After reading the first chunk, we can break if size is None or 0
-            if size is None or size == 0:
-                break
+            if size is None or size == 0: break
 
         # Join all the chunks and return them
-        return b"".join(chunks)
+        return b''.join(chunks)
 
     async def handshake(self, uri, headers=[], keyfile=None, certfile=None, cafile=None, cert_reqs=0):
         """
@@ -350,46 +408,49 @@ class AsyncWebsocketClient:
         self.sock.connect(addr)
         self.sock.setblocking(False)
 
-        if self.uri.protocol == "wss":
+        if self.uri.protocol == 'wss':
             cadata = None
             if not cafile is None:
-                with open(cafile, "rb") as f:
+                with open(cafile, 'rb') as f:
                     cadata = f.read()
             self.sock = ssl.wrap_socket(
-                self.sock,
-                server_side=False,
-                key=keyfile,
-                cert=certfile,
-                cert_reqs=cert_reqs,  # 0 - NONE, 1 - OPTIONAL, 2 - REQUIED
+                self.sock, server_side=False,
+                key=keyfile, cert=certfile,
+                cert_reqs=cert_reqs, # 0 - NONE, 1 - OPTIONAL, 2 - REQUIED
                 cadata=cadata,
-                server_hostname=self.uri.hostname,
+                server_hostname=self.uri.hostname
             )
 
         def send_header(header, *args):
             # CPython bytes-% requires bytes args; MicroPython accepts str too
-            bargs = tuple(a if isinstance(a, (bytes, bytearray)) else str(a).encode("utf-8") for a in args)
-            self.sock.write(header % bargs + b"\r\n")
+            bargs = tuple(
+                a if isinstance(a, (bytes, bytearray))
+                else str(a).encode('utf-8')
+                for a in args
+            )
+            self.sock.write(header % bargs + b'\r\n')
 
         # Sec-WebSocket-Key is 16 bytes of random base64 encoded
-        key = b.b2a_base64(bytes(r.getrandbits(8) for _ in range(16)))[:-1]
+        key = b.b2a_base64(bytes(r.getrandbits(8)
+                                        for _ in range(16)))[:-1]
 
-        send_header(b"GET %s HTTP/1.1", self.uri.path or "/")
-        send_header(b"Host: %s:%s", self.uri.hostname, self.uri.port)
-        send_header(b"Connection: Upgrade")
-        send_header(b"Upgrade: websocket")
-        send_header(b"Sec-WebSocket-Key: %s", key)
-        send_header(b"Sec-WebSocket-Version: 13")
+        send_header(b'GET %s HTTP/1.1', self.uri.path or '/')
+        send_header(b'Host: %s:%s', self.uri.hostname, self.uri.port)
+        send_header(b'Connection: Upgrade')
+        send_header(b'Upgrade: websocket')
+        send_header(b'Sec-WebSocket-Key: %s', key)
+        send_header(b'Sec-WebSocket-Version: 13')
         # bytes.format() 仅 MicroPython 支持，改用 %s 保持 CPython 兼容
-        send_header(b"Origin: http://%s:%s", self.uri.hostname, self.uri.port)
+        send_header(b'Origin: http://%s:%s', self.uri.hostname, self.uri.port)
 
         for key, value in headers:
-            send_header(b"%s: %s", key, value)
+            send_header(b'%s: %s', key, value)
 
-        send_header(b"")
+        send_header(b'')
 
         line = await self.a_readline()
         header = (line)[:-2]
-        if not header.startswith(b"HTTP/1.1 101 "):
+        if not header.startswith(b'HTTP/1.1 101 '):
             raise Exception(header)
 
         # We don't (currently) need these headers
@@ -429,20 +490,20 @@ class AsyncWebsocketClient:
             Returns (True, OP_CLOSE, None) and closes connection on MemoryError.
         """
         # Frame header
-        byte1, byte2 = struct.unpack("!BB", await self.a_read(2))
+        byte1, byte2 = struct.unpack('!BB', await self.a_read(2))
 
         # Byte 1: FIN(1) _(1) _(1) _(1) OPCODE(4)
         fin = bool(byte1 & 0x80)
-        opcode = byte1 & 0x0F
+        opcode = byte1 & 0x0f
 
         # Byte 2: MASK(1) LENGTH(7)
         mask = bool(byte2 & (1 << 7))
-        length = byte2 & 0x7F
+        length = byte2 & 0x7f
 
         if length == 126:  # Magic number, length header is 2 bytes
-            (length,) = struct.unpack("!H", await self.a_read(2))
+            length, = struct.unpack('!H', await self.a_read(2))
         elif length == 127:  # Magic number, length header is 8 bytes
-            (length,) = struct.unpack("!Q", await self.a_read(8))
+            length, = struct.unpack('!Q', await self.a_read(8))
 
         if mask:  # Mask is 4 bytes
             mask_bits = await self.a_read(4)
@@ -456,11 +517,12 @@ class AsyncWebsocketClient:
             return True, OP_CLOSE, None
 
         if mask:
-            data = bytes(b ^ mask_bits[i % 4] for i, b in enumerate(data))
+            data = bytes(b ^ mask_bits[i % 4]
+                         for i, b in enumerate(data))
 
         return fin, opcode, data
 
-    def write_frame(self, opcode, data=b""):
+    def write_frame(self, opcode, data=b''):
         """
         构造并发送一个带掩码的 WebSocket 帧（客户端发送必须掩码）。
 
@@ -499,23 +561,23 @@ class AsyncWebsocketClient:
 
         if length < 126:  # 126 is magic value to use 2-byte length header
             byte2 |= length
-            self.sock.write(struct.pack("!BB", byte1, byte2))
+            self.sock.write(struct.pack('!BB', byte1, byte2))
 
         elif length < (1 << 16):  # Length fits in 2-bytes
             byte2 |= 126  # Magic code
-            self.sock.write(struct.pack("!BBH", byte1, byte2, length))
+            self.sock.write(struct.pack('!BBH', byte1, byte2, length))
 
         elif length < (1 << 64):
             byte2 |= 127  # Magic code
-            self.sock.write(struct.pack("!BBQ", byte1, byte2, length))
+            self.sock.write(struct.pack('!BBQ', byte1, byte2, length))
 
         else:
             raise ValueError()
 
         if mask:  # Mask is 4 bytes
-            mask_bits = struct.pack("!I", r.getrandbits(32))
+            mask_bits = struct.pack('!I', r.getrandbits(32))
             self.sock.write(mask_bits)
-            data = bytes(b ^ mask_bits[i % 4] for i, b in enumerate(data))
+            data = _mask_payload(data, mask_bits)
 
         self.sock.write(data)
 
@@ -556,16 +618,31 @@ class AsyncWebsocketClient:
                 fin, opcode, data = await self.read_frame()
             # except (ValueError, EOFError) as ex:
             except Exception as ex:
-                print("Exception in recv while reading frame:", ex)
+                print('Exception in recv while reading frame:', ex)
                 await self.open(False)
                 return
 
             if not fin:
-                raise NotImplementedError()
+                # Fragmented frame: accumulate continuation frames until fin=True
+                first_opcode = opcode
+                chunks = [data]
+                while not fin:
+                    fin, opcode, data = await self.read_frame()
+                    if opcode == OP_CLOSE:
+                        await self.open(False)
+                        return
+                    elif opcode == OP_PING:
+                        self.write_frame(OP_PONG, data)
+                        continue
+                    elif opcode == OP_PONG:
+                        continue
+                    chunks.append(data)
+                data = b"".join(chunks)
+                opcode = first_opcode
 
             if opcode == OP_TEXT:
                 try:
-                    return data.decode("utf-8")
+                    return data.decode('utf-8')
                 except UnicodeError:
                     # 如果解码失败，返回原始bytes
                     print("[WebSocket] Warning: OP_TEXT frame contains invalid UTF-8, returning raw bytes")
@@ -586,7 +663,7 @@ class AsyncWebsocketClient:
                     # And then continue to wait for a data frame
                     continue
                 except Exception as ex:
-                    print("Error sending pong frame:", ex)
+                    print('Error sending pong frame:', ex)
                     # If sending the pong frame fails, close the connection
                     await self.open(False)
                     return
@@ -628,13 +705,12 @@ class AsyncWebsocketClient:
             return
         if isinstance(buf, str):
             opcode = OP_TEXT
-            buf = buf.encode("utf-8")
+            buf = buf.encode('utf-8')
         elif isinstance(buf, bytes):
             opcode = OP_BYTES
         else:
             raise TypeError()
         self.write_frame(opcode, buf)
-
 
 # ======================================== 初始化配置 ===========================================
 

@@ -17,7 +17,7 @@ from async_websocketclient import AsyncWebsocketClient  # 导入你的WebSocket�
 
 # 配置WiFi (请替换为你的WiFi信息)
 WIFI_SSID = "Y/OURSPACE"
-WIFI_PASSWORD = "qc123456789"
+WIFI_PASSWORD = "your_wifi_password"
 
 # 测试服务器地址 (Postman Echo)
 TEST_URL = "wss://ws.postman-echo.com/raw"

@@ -2,11 +2,16 @@
 
 适用于 MicroPython 的异步 WebSocket 客户端驱动，支持 `ws://` 与 `wss://` 协议，基于 `asyncio` 实现非阻塞通信。
 
-**版本**: v1.0.1
+**版本**: v1.0.2
 
 ---
 
 ## 更新日志
+
+### v1.0.2 (2026-08-17)
+- 优化客户端发送掩码处理，降低大块 payload 的 CPU 开销
+- 优化非阻塞 socket 读取，只在无数据时让出 CPU
+- 支持接收 WebSocket 分片帧并自动拼接
 
 ### v1.0.1 (2026-05-14)
 - ✨ 新增 CPython 兼容性支持
@@ -372,7 +377,7 @@ Connection closed
 
 2. **`wss://` 首次 TLS 握手较慢**：Pico 2W 使用 lwIP 软件 TLS，首次握手耗时约 2~4 秒，属正常现象。
 
-3. **不支持分片帧**：`recv()` 遇到 `fin=False` 的分片帧（`OP_CONT`）会抛出 `NotImplementedError`，大多数云端 API 单帧返回完整消息，不受影响。
+3. **分片帧处理**：`recv()` 会拼接 `fin=False` 的分片帧，并继续自动处理 PING/PONG 控制帧。
 
 4. **`cert_reqs=0` 不验证服务器证书**：适用于资源受限的嵌入式场景，生产环境如需严格验证，请提供 `cafile` 参数并设置 `cert_reqs=2`。
 

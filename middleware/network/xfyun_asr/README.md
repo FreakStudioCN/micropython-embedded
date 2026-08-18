@@ -48,7 +48,7 @@
 |------|------|
 | 主控 | 树莓派 Pico 2W（或其他支持 WiFi 的 MicroPython 设备） |
 | 固件 | MicroPython v1.23.0 及以上 |
-| 网络 | 2.4GHz WiFi，需能访问 `iat.xf-yun.com`（讯飞 ASR 服务） |
+| 网络 | 2.4GHz WiFi，需能访问 `iat.cn-huabei-1.xf-yun.com`（讯飞 ASR 服务） |
 | 额外硬件 | 无（纯软件库，不依赖任何外设） |
 
 ---
@@ -69,7 +69,7 @@ xfyun_asr/
 |------|------|
 | `code/xfyun_asr.py` | 驱动核心类 `XfyunASR`，包含鉴权、帧构造、流式发送与结果解析全部逻辑 |
 | `code/main.py` | 完整使用示例，演示 WiFi 连接、NTP 同步、TTS 合成 + ASR 识别的完整流程 |
-| `package.json` | mip 包描述文件，声明包名、版本、作者及对 `async_websocket_client` 的依赖 |
+| `package.json` | mip 包描述文件，声明包名、版本、作者及对 `async_websocket_client` 的可安装依赖 |
 | `LICENSE` | MIT 开源协议文本 |
 
 ---
@@ -84,7 +84,7 @@ xfyun_asr/
 获取当前 UTC 时间（RFC1123 格式，依赖 NTP 同步）
     ↓
 构造签名原文：
-    "host: iat.xf-yun.com\n
+    "host: iat.cn-huabei-1.xf-yun.com\n
      date: {RFC1123 时间}\n
      GET /v1 HTTP/1.1"
     ↓
@@ -140,18 +140,20 @@ MicroPython 的 asyncio 是单线程协程，无法真正并发发送和接收�
 前往 [upypi.net](https://upypi.net) 搜索 `async_websocket_client`，复制安装命令后在终端运行，例如：
 
 ```bash
-mpremote mip install https://upypi.net/pkgs/async_websocket_client/1.0.0
+mpremote mip install https://upypi.net/pkgs/async_websocket_client/1.0.2
 ```
+
+> 当前驱动源码依赖 `fastb64`（`from fastb64 import b64encode_str, b64decode`），但 `fastb64` 当前未作为 uPyPI package 提供，不能通过 `package.json` 的 `deps` 自动安装。使用前请确认目标 MicroPython 固件是否已经内置/冻结 `fastb64`；如果执行 `import fastb64` 报 `ImportError`，说明当前环境缺少该模块。
 
 **2. 安装 `xfyun_tts`**（`main.py` 中同时演示了 TTS，需要此库）
 
 前往 [upypi.net](https://upypi.net) 搜索 `xfyun_tts`，复制安装命令后在终端运行，例如：
 
 ```bash
-mpremote mip install https://upypi.net/pkgs/xfyun_tts/1.0.0
+mpremote mip install https://upypi.net/pkgs/xfyun_tts/1.2.1
 ```
 
-> 如果你只使用 `XfyunASR` 而不使用 TTS，则仅需安装 `async_websocket_client`。
+> 如果你只使用 `XfyunASR` 而不使用 TTS，则仅需安装 `async_websocket_client`；`fastb64` 仍需由目标运行环境提供。
 
 ### 第二步：部署驱动文件
 
@@ -180,7 +182,9 @@ asr = XfyunASR(
     app_id      = "your_appid",
     api_key     = "your_api_key",
     api_secret  = "your_api_secret",  # 平台提供的原始字符串，勿 Base64 解码
-    sample_rate = 8000,               # 须与音频文件采样率一致
+    sample_rate = 16000,              # 须与音频文件采样率一致
+    cafile      = "ca.pem",
+    cert_reqs   = 2,
 )
 ```
 
@@ -199,7 +203,9 @@ print(text)
 | 方法 | 参数 | 返回值 | 说明 |
 |------|------|--------|------|
 | `XfyunASR(app_id, api_key, api_secret, ...)` | 见下表 | 实例 | 初始化驱动 |
-| `await recognize(filepath)` | `filepath`: PCM 文件路径 | `str` | 识别并返回文字 |
+| `await recognize(filepath, pace_ms=0, recv_timeout_ms=12000)` | `filepath`: PCM 文件路径 | `str` | 识别并返回文字 |
+| `await recognize_streaming(filepath)` | `filepath`: PCM 文件路径 | `str` | 兼容旧流式识别调用 |
+| `await recognize_mic(codec, max_ms=15000, prelisten_ms=3000)` | `codec`: 录音设备 | `str` | 使用本地 VAD 录音并识别 |
 
 ### 初始化参数说明
 
@@ -210,7 +216,22 @@ print(text)
 | `api_secret` | str | — | API Secret（平台提供的原始字符串） |
 | `sample_rate` | int | `16000` | 音频采样率，`8000` 或 `16000` |
 | `accent` | str | `"mandarin"` | 口音/方言（如 `"cantonese"`、`"sichuan"`） |
-| `eos` | int | `6000` | 静音停止阈值（毫秒，范围 500~60000） |
+| `eos` | int | `800` | 静音停止阈值（毫秒，范围 500~60000） |
+| `cafile` | str | `None` | CA 证书文件路径；配合 `cert_reqs=2` 验证 WSS 服务端证书 |
+| `cert_reqs` | int | `0` | TLS 证书验证模式；`0` 为不验证，`2` 为必须验证 |
+
+> `recognize(filepath)` 和 `recognize_mic()` 都会上传音频数据，因此强制要求 WSS peer verification：必须提供 `cafile` 且设置 `cert_reqs=2`。
+
+```python
+asr = XfyunASR(
+    ...,
+    cafile="ca.pem",
+    cert_reqs=2,
+)
+
+text = await asr.recognize("test.pcm")
+text = await asr.recognize_mic(codec)
+```
 
 ---
 
@@ -277,7 +298,7 @@ ASR result: 大家好，一块吃饭吧，hello。
 
 2. **API Secret 不得 Base64 解码**：平台下发的 API Secret 字符串应直接以 UTF-8 编码作为 HMAC 密钥。Base64 解码后使用会导致签名错误（401）。
 
-3. **采样率必须一致**：`sample_rate` 参数须与 PCM 文件的实际采样率严格匹配。若使用 `xfyun_tts` 生成的 `output.pcm`，TTS 默认采样率为 8000 Hz，ASR 也应设置 `sample_rate=8000`。
+3. **采样率必须一致**：`sample_rate` 参数须与 PCM 文件的实际采样率严格匹配。若使用当前新版 `xfyun_tts` 生成的 `output.pcm` 且没有覆盖采样率，TTS 默认 `audio_sample_rate` 为 16000 Hz，ASR 也应设置 `sample_rate=16000`。
 
 4. **TTS 与 ASR 需分别开通服务**：讯飞控制台中，语音合成（TTS）和中英识别大模型（ASR）是独立的服务，需分别在对应产品页面获取免费额度或购买套餐，同一 APPID 可同时开通两项服务。
 
@@ -288,7 +309,7 @@ ASR result: 大家好，一块吃饭吧，hello。
    ffplay -f s16le -ar 8000 -ac 1 output.pcm
    ```
 
-7. **`wss://` 首次 TLS 握手较慢**：Pico 2W 使用软件 TLS（lwIP），首次握手耗时约 2~4 秒，属正常现象。
+7. **`wss://` 首次 TLS 握手较慢**：Pico 2W 使用软件 TLS（lwIP），首次握手耗时约 2~4 秒，属正常现象。默认 `cert_reqs=0` 是兼容资源受限固件的显式不安全配置，不验证服务端证书；如固件支持 CA 校验，请提供 CA 文件并设置 `cert_reqs=2`，例如 `asr = XfyunASR(..., cafile="ca.pem", cert_reqs=2)` 或 `await asr.connect(cafile="ca.pem", cert_reqs=2)`。`recognize(filepath)` 和 `recognize_mic()` 调用前必须启用上述证书验证，否则会直接抛出 `ValueError` 且不会发送音频数据。
 
 ---
 

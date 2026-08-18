@@ -36,7 +36,7 @@
 
 ### 网络要求
 
-- **WiFi 连接**：2.4GHz WiFi，能访问 `tts-api.xfyun.cn`（讯飞 TTS API 服务器）
+- **WiFi 连接**：2.4GHz WiFi，能访问 `cbm01.cn-huabei-1.xf-yun.com`（讯飞 TTS API 服务器）
 - **NTP 时间同步**：需通过 `ntptime.settime()` 同步系统时间，用于 API 鉴权签名
 
 ### API 凭证要求
@@ -67,9 +67,10 @@
 ## 软件环境
 
 - **MicroPython 固件**：v1.23.0 或更高版本
-- **驱动版本**：v1.1.0
+- **驱动版本**：v1.2.1
 - **依赖库**：
   - `async_websocketclient`：WebSocket 客户端库（需单独安装）
+  - `fastb64`：当前驱动源码依赖的 Base64 编解码加速模块；当前未作为 uPyPI package 提供，需确认目标 MicroPython 固件是否已经内置/冻结
   - `ntptime`：NTP 时间同步（MicroPython 内置）
   - `network`：WiFi 网络管理（MicroPython 内置）
   - `asyncio`：异步 I/O 框架（MicroPython 内置）
@@ -106,6 +107,8 @@ xfyun_tts/
 import mip
 mip.install("async_websocketclient")
 ```
+
+> 当前驱动源码依赖 `fastb64`（`from fastb64 import b64encode_str, b64decode`），但 `fastb64` 当前未作为 uPyPI package 提供，不能通过 `package.json` 的 `deps` 自动安装。使用前请确认目标 MicroPython 固件是否已经内置/冻结 `fastb64`；如果执行 `import fastb64` 报 `ImportError`，说明当前环境缺少该模块。
 
 ### 3. 配置凭证
 
@@ -193,8 +196,8 @@ asyncio.run(test())
 #### 构造函数
 
 ```python
-XfyunTTS(app_id, api_key, api_secret, vcn="x4_xiaoyan", aue="raw", 
-         auf="audio/L16;rate=8000", speed=50, volume=50, pitch=50, 
+XfyunTTS(app_id, api_key, api_secret, vcn="x6_lingfeiyi_pro",
+         speed=50, volume=50, pitch=50,
          debug=False, **kwargs)
 ```
 
@@ -205,9 +208,9 @@ XfyunTTS(app_id, api_key, api_secret, vcn="x4_xiaoyan", aue="raw",
 | app_id | str | 必填 | 讯飞开放平台 APPID |
 | api_key | str | 必填 | API Key |
 | api_secret | str | 必填 | API Secret（Base64 编码） |
-| vcn | str | "x4_xiaoyan" | 发音人（见常量表） |
-| aue | str | "raw" | 音频编码（见常量表） |
-| auf | str | "audio/L16;rate=8000" | 音频格式 |
+| vcn | str | "x6_lingfeiyi_pro" | 默认发音人 |
+| audio_encoding | str | "raw" | 音频编码 |
+| audio_sample_rate | int | 16000 | 音频采样率 |
 | speed | int | 50 | 语速 [0-100] |
 | volume | int | 50 | 音量 [0-100] |
 | pitch | int | 50 | 音高 [0-100] |
@@ -222,6 +225,8 @@ XfyunTTS(app_id, api_key, api_secret, vcn="x4_xiaoyan", aue="raw",
 | reg | str | "0" | 英文发音方式 [0-2] |
 | rdn | str | "0" | 数字发音方式 [0-3] |
 | sfl | int | None | 流式返回 mp3（配合 aue=lame） |
+| cafile | str | None | CA 证书文件路径；配合 `cert_reqs=2` 验证 WSS 服务端证书 |
+| cert_reqs | int | 0 | TLS 证书验证模式；`0` 为不验证，`2` 为必须验证 |
 
 #### 类常量
 
@@ -371,7 +376,7 @@ XfyunTTS(app_id, api_key, api_secret, vcn="x4_xiaoyan", aue="raw",
 **异常**：
 - `ValueError`: 参数不是 "0"、"1"、"2" 或 "3" 时抛出
 
-##### async synthesize(text, filepath=None)
+##### async synthesize(text, filepath=None, vcn=None, **kwargs)
 
 连接讯飞 TTS 服务，发送合成请求，逐帧接收并流式写入文件（或内存）。
 
@@ -387,6 +392,10 @@ XfyunTTS(app_id, api_key, api_secret, vcn="x4_xiaoyan", aue="raw",
 - 调用前需确保 WiFi 已连接，且已通过 ntptime.settime() 同步系统时间
 - 服务端 status==2 表示最后一帧，收到后主动关闭连接
 - 若 filepath 以 `.wav` 结尾，自动添加 WAV 文件头
+
+##### async synthesize_streaming(text, on_chunk, vcn=None, **kwargs)
+
+流式合成，每收到一个音频块就调用一次异步 `on_chunk(chunk)` 回调，适合低延迟播放或转发。
 
 ##### async synthesize_and_play(text, audio_out, amp_sd, rate=16000)
 
@@ -418,11 +427,12 @@ XfyunTTS(app_id, api_key, api_secret, vcn="x4_xiaoyan", aue="raw",
 
 | 类别 | 说明 |
 |------|------|
-| **网络要求** | 需稳定的 WiFi 连接，能访问讯飞 TTS API 服务器（tts-api.xfyun.cn） |
+| **网络要求** | 需稳定的 WiFi 连接，能访问讯飞 TTS API 服务器（cbm01.cn-huabei-1.xf-yun.com） |
 | **时间同步** | 必须通过 ntptime.settime() 同步系统时间，否则鉴权签名失败 |
 | **API 限额** | 讯飞免费版有调用次数限制，超出需购买套餐 |
-| **音频格式** | 默认输出 8kHz 16bit 单声道 PCM，可通过 set_sample_rate() 切换为 16kHz |
+| **音频格式** | 默认输出 16kHz 16bit 单声道 PCM，可通过 set_sample_rate() 切换为 8kHz |
 | **内存限制** | 长文本合成建议使用 filepath 参数流式写入文件，避免内存溢出 |
+| **TLS 证书验证** | 默认 `cert_reqs=0` 是兼容资源受限固件的显式不安全配置，不验证服务端证书；如固件支持 CA 校验，请提供 CA 文件并设置 `cert_reqs=2`，例如 `tts = XfyunTTS(..., cafile="ca.pem", cert_reqs=2)` |
 | **I2S 兼容性** | 实时播放功能需硬件支持 I2S，ESP32-S3 / Pico 2W 已验证可用 |
 | **异步调用** | synthesize() 和 synthesize_and_play() 为异步方法，需在 async 函数中调用 |
 | **链式调用** | 所有 setter 方法返回 self，支持链式调用，如 `tts.set_speed(60).set_volume(80)` |
@@ -431,6 +441,7 @@ XfyunTTS(app_id, api_key, api_secret, vcn="x4_xiaoyan", aue="raw",
 
 | 版本号 | 日期 | 作者 | 修改说明 |
 |--------|------|------|----------|
+| v1.2.1 | 2026-08-17 | leeqingsui | 切换超拟人 TTS v1 接口，新增 fastb64 加速、调用时参数覆盖与流式回调，并保留链式 setter 兼容 |
 | v1.1.0 | 2026-04-12 | leeqingsui | 新增动态参数配置、链式调用、实时播放、多发音人支持 |
 | v1.0.0 | 2026-04-10 | leeqingsui | 初始版本，基础 TTS 功能 |
 
