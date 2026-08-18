@@ -16,23 +16,45 @@ from xfyun_asr import XfyunASR
 
 # ======================================== 全局变量 ============================================
 
-WIFI_SSID     = "your_wifi_ssid"
+WIFI_SSID = "your_wifi_ssid"
 WIFI_PASSWORD = "your_wifi_password"
 
 # TTS 凭据（需在讯飞控制台开通语音合成服务）
-TTS_APPID      = "your_tts_appid"
-TTS_API_KEY    = "your_tts_api_key"
+TTS_APPID = "your_tts_appid"
+TTS_API_KEY = "your_tts_api_key"
 TTS_API_SECRET = "your_tts_api_secret"
 
 # ASR 凭据（需在讯飞控制台开通中英识别大模型服务）
-ASR_APPID      = "your_asr_appid"
-ASR_API_KEY    = "your_asr_api_key"
+ASR_APPID = "your_asr_appid"
+ASR_API_KEY = "your_asr_api_key"
 ASR_API_SECRET = "your_asr_api_secret"
 
 OUTPUT_PCM = "output.pcm"
 OUTPUT_WAV = "output.wav"
 
+# ======================================== 初始化配置 ============================================
+
+time.sleep(3)
+print("FreakStudio: iFlytek TTS + ASR Demo")
+
+tts = XfyunTTS(
+    app_id=TTS_APPID,
+    api_key=TTS_API_KEY,
+    api_secret=TTS_API_SECRET,
+)
+
+# ASR 采样率须与 TTS 输出一致（新版 XfyunTTS 默认 audio_sample_rate=16000）
+asr = XfyunASR(
+    app_id=ASR_APPID,
+    api_key=ASR_API_KEY,
+    api_secret=ASR_API_SECRET,
+    sample_rate=16000,
+)
+
+# ========================================  主程序  ============================================
+
 # ======================================== 功能函数 ============================================
+
 
 def connect_wifi():
     """
@@ -91,8 +113,7 @@ def sync_ntp():
             ntptime.host = host
             ntptime.settime()
             t = time.gmtime()
-            print("NTP synced via {}: {}-{:02d}-{:02d} {:02d}:{:02d}:{:02d} UTC".format(
-                host, t[0], t[1], t[2], t[3], t[4], t[5]))
+            print("NTP synced via {}: {}-{:02d}-{:02d} {:02d}:{:02d}:{:02d} UTC".format(host, t[0], t[1], t[2], t[3], t[4], t[5]))
             return
         except Exception as e:
             print("NTP failed ({}):".format(host), e)
@@ -167,28 +188,6 @@ async def run_asr(filepath):
     else:
         print("Recognition failed: no text returned.")
 
-# ======================================== 自定义类 ============================================
-
-# ======================================== 初始化配置 ===========================================
-
-time.sleep(3)
-print("FreakStudio: iFlytek TTS + ASR Demo")
-
-tts = XfyunTTS(
-    app_id     = TTS_APPID,
-    api_key    = TTS_API_KEY,
-    api_secret = TTS_API_SECRET,
-)
-
-# ASR 采样率须与 TTS 输出一致（TTS 默认 auf=audio/L16;rate=8000 → 8000 Hz）
-asr = XfyunASR(
-    app_id      = ASR_APPID,
-    api_key     = ASR_API_KEY,
-    api_secret  = ASR_API_SECRET,
-    sample_rate = 16000,
-)
-
-# ========================================  主程序  ===========================================
 
 if __name__ == "__main__":
     if not connect_wifi():

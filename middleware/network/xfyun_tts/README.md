@@ -208,9 +208,9 @@ XfyunTTS(app_id, api_key, api_secret, vcn="x6_lingfeiyi_pro",
 | app_id | str | 必填 | 讯飞开放平台 APPID |
 | api_key | str | 必填 | API Key |
 | api_secret | str | 必填 | API Secret（Base64 编码） |
-| vcn | str | "x4_xiaoyan" | 发音人（见常量表） |
-| aue | str | "raw" | 音频编码（见常量表） |
-| auf | str | "audio/L16;rate=8000" | 音频格式 |
+| vcn | str | "x6_lingfeiyi_pro" | 默认发音人 |
+| audio_encoding | str | "raw" | 音频编码 |
+| audio_sample_rate | int | 16000 | 音频采样率 |
 | speed | int | 50 | 语速 [0-100] |
 | volume | int | 50 | 音量 [0-100] |
 | pitch | int | 50 | 音高 [0-100] |
@@ -225,6 +225,8 @@ XfyunTTS(app_id, api_key, api_secret, vcn="x6_lingfeiyi_pro",
 | reg | str | "0" | 英文发音方式 [0-2] |
 | rdn | str | "0" | 数字发音方式 [0-3] |
 | sfl | int | None | 流式返回 mp3（配合 aue=lame） |
+| cafile | str | None | CA 证书文件路径；配合 `cert_reqs=2` 验证 WSS 服务端证书 |
+| cert_reqs | int | 0 | TLS 证书验证模式；`0` 为不验证，`2` 为必须验证 |
 
 #### 类常量
 
@@ -430,6 +432,7 @@ XfyunTTS(app_id, api_key, api_secret, vcn="x6_lingfeiyi_pro",
 | **API 限额** | 讯飞免费版有调用次数限制，超出需购买套餐 |
 | **音频格式** | 默认输出 16kHz 16bit 单声道 PCM，可通过 set_sample_rate() 切换为 8kHz |
 | **内存限制** | 长文本合成建议使用 filepath 参数流式写入文件，避免内存溢出 |
+| **TLS 证书验证** | 默认 `cert_reqs=0` 是兼容资源受限固件的显式不安全配置，不验证服务端证书；如固件支持 CA 校验，请提供 CA 文件并设置 `cert_reqs=2`，例如 `tts = XfyunTTS(..., cafile="ca.pem", cert_reqs=2)` |
 | **I2S 兼容性** | 实时播放功能需硬件支持 I2S，ESP32-S3 / Pico 2W 已验证可用 |
 | **异步调用** | synthesize() 和 synthesize_and_play() 为异步方法，需在 async 函数中调用 |
 | **链式调用** | 所有 setter 方法返回 self，支持链式调用，如 `tts.set_speed(60).set_volume(80)` |

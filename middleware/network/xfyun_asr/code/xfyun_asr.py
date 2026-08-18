@@ -6,9 +6,9 @@
 # @Description : iFlytek online ASR (large model) driver over WebSocket for MicroPython
 # @License : MIT
 
-__version__  = "1.0.2"
-__author__   = "leeqingsui"
-__license__  = "MIT"
+__version__ = "1.0.2"
+__author__ = "leeqingsui"
+__license__ = "MIT"
 __platform__ = "MicroPython v1.23"
 
 # ======================================== 导入相关模块 =========================================
@@ -24,39 +24,52 @@ from fastb64 import b64encode_str, b64decode
 # ======================================== 全局变量 ============================================
 
 # 讯飞大模型多语种语音识别 WebSocket 接入点
-_HOST    = "iat.cn-huabei-1.xf-yun.com"
-_PATH    = "/v1"
+_HOST = "iat.cn-huabei-1.xf-yun.com"
+_PATH = "/v1"
 _WSS_URL = "wss://iat.cn-huabei-1.xf-yun.com/v1"
 
 # 每帧音频字节数（API 规范：16-bit PCM 每次发送 1280 字节 = 40ms@16k）
 _FRAME_SIZE = 1280
 # 麦克风单次 read() 返回的字节数（20ms@16k），两帧凑一个 _FRAME_SIZE
-_MIC_CHUNK  = 640
+_MIC_CHUNK = 640
 
 # 本地 VAD 能量阈值下限（16-bit 平均绝对幅度）
 _VAD_ENERGY_THRESHOLD = 80
 # 连续多少帧静音后主动发 EOS 关流（35 帧 × 20ms = 700ms）。
 # 原来是 20 帧（400ms），实测说话中间正常换气就被切断，句子只收到前半截。
-_VAD_SILENCE_FRAMES   = 35
+_VAD_SILENCE_FRAMES = 35
 # 判定"开始说话"所需的连续有声帧数（3 帧 = 120ms，滤掉咔哒声）
-_VAD_SPEECH_FRAMES    = 3
+_VAD_SPEECH_FRAMES = 3
 # 用前 N 帧估计底噪（8 帧 = 320ms）
-_VAD_NOISE_FRAMES     = 8
+_VAD_NOISE_FRAMES = 8
 # 自适应阈值 = max(下限, 底噪 × 该倍数)
-_VAD_NOISE_MULT       = 3
+_VAD_NOISE_MULT = 3
 # 能量计算的采样步长：每 4 个采样点取 1 个。全扫 1280B 要 5.6ms，
 # 步长 4 只要 1.5ms，两者算出的能量值实测差 <0.5%。
-_VAD_STRIDE           = 4
+_VAD_STRIDE = 4
 
 # 默认 EOS 降为 800ms（原 6000ms），配合本地 VAD 快速关流
 _DEFAULT_EOS = 800
 
 # RFC1123 日期格式所需的星期与月份名称表
 _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-_MONTHS   = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
-             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_MONTHS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+)
 
 # ======================================== 功能函数 ============================================
+
 
 def _rfc1123_now():
     """
@@ -80,19 +93,20 @@ def _rfc1123_now():
     """
     try:
         import timesync
+
         t = timesync.utc_struct()
     except Exception:
-        t = time.gmtime()          # timesync 不可用时退回原行为
+        t = time.gmtime()  # timesync 不可用时退回原行为
     # gmtime() -> (year, month, mday, hour, minute, second, weekday, yearday)
     # weekday: 0=Monday, 6=Sunday
     return "{wd}, {d:02d} {mon} {y} {h:02d}:{m:02d}:{s:02d} GMT".format(
-        wd  = _WEEKDAYS[t[6]],
-        d   = t[2],
-        mon = _MONTHS[t[1] - 1],
-        y   = t[0],
-        h   = t[3],
-        m   = t[4],
-        s   = t[5],
+        wd=_WEEKDAYS[t[6]],
+        d=t[2],
+        mon=_MONTHS[t[1] - 1],
+        y=t[0],
+        h=t[3],
+        m=t[4],
+        s=t[5],
     )
 
 
@@ -123,12 +137,12 @@ def _hmac_sha256(key, msg):
     if len(key) > block_size:
         key = hashlib.sha256(key).digest()
     # 补零至块大小
-    key       = key + b'\x00' * (block_size - len(key))
+    key = key + b"\x00" * (block_size - len(key))
     # 构造外层和内层填充
     o_key_pad = bytes(b ^ 0x5C for b in key)
     i_key_pad = bytes(b ^ 0x36 for b in key)
     # 两次 SHA256：先内层再外层
-    inner     = hashlib.sha256(i_key_pad + msg).digest()
+    inner = hashlib.sha256(i_key_pad + msg).digest()
     return hashlib.sha256(o_key_pad + inner).digest()
 
 
@@ -153,9 +167,7 @@ def _url_encode(s):
         str: URL-encoded string.
     """
     # RFC3986 非保留字符集，这些字符无需编码
-    _safe = frozenset(
-        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~'
-    )
+    _safe = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")
     out = []
     for ch in s:
         if ch in _safe:
@@ -163,9 +175,9 @@ def _url_encode(s):
             out.append(ch)
         else:
             # 非安全字符逐字节转义为 %XX
-            for byte in ch.encode('utf-8'):
-                out.append('%{:02X}'.format(byte))
-    return ''.join(out)
+            for byte in ch.encode("utf-8"):
+                out.append("%{:02X}".format(byte))
+    return "".join(out)
 
 
 def _extract_w_fields(json_str):
@@ -190,7 +202,7 @@ def _extract_w_fields(json_str):
         # 寻找闭合引号，同时处理 \" 转义
         val_end = val_start
         while val_end < len(json_str):
-            if json_str[val_end] == '\\':
+            if json_str[val_end] == "\\":
                 val_end += 2  # 跳过转义序列
             elif json_str[val_end] == '"':
                 break
@@ -203,17 +215,18 @@ def _extract_w_fields(json_str):
     for chunk in result:
         i = 0
         while i < len(chunk):
-            if chunk[i:i + 2] == '\\u' and i + 6 <= len(chunk):
-                code = int(chunk[i + 2:i + 6], 16)
+            if chunk[i : i + 2] == "\\u" and i + 6 <= len(chunk):
+                code = int(chunk[i + 2 : i + 6], 16)
                 out.append(chr(code))
                 i += 6
             else:
                 out.append(chunk[i])
                 i += 1
-    return ''.join(out)
+    return "".join(out)
 
 
 # ======================================== 自定义类 ============================================
+
 
 class _WsClient(AsyncWebsocketClient):
     """
@@ -266,26 +279,26 @@ class _WsClient(AsyncWebsocketClient):
             raise TypeError("uri must be str, got {}".format(type(uri).__name__))
 
         # 判断协议并截取主机+路径部分
-        if uri.startswith('wss://'):
-            protocol, rest, default_port = 'wss', uri[6:], 443
-        elif uri.startswith('ws://'):
-            protocol, rest, default_port = 'ws', uri[5:], 80
+        if uri.startswith("wss://"):
+            protocol, rest, default_port = "wss", uri[6:], 443
+        elif uri.startswith("ws://"):
+            protocol, rest, default_port = "ws", uri[5:], 80
         else:
             raise ValueError("Scheme not ws or wss")
 
         # 分离主机部分与路径部分
-        slash = rest.find('/')
+        slash = rest.find("/")
         if slash == -1:
-            hostpart, path = rest, '/'
+            hostpart, path = rest, "/"
         else:
             hostpart, path = rest[:slash], rest[slash:]
 
         # 分离主机名与端口
-        colon = hostpart.find(':')
+        colon = hostpart.find(":")
         if colon == -1:
             hostname, port = hostpart, default_port
         else:
-            hostname, port = hostpart[:colon], int(hostpart[colon + 1:])
+            hostname, port = hostpart[:colon], int(hostpart[colon + 1 :])
 
         return URI(protocol, hostname, port, path)
 
@@ -315,15 +328,15 @@ def _frame_energy(pcm_chunk):
     if n < 2:
         return 0
     energy = 0
-    count  = 0
+    count = 0
     # 每 _VAD_STRIDE 个采样点取一个，即字节步长 = 2 × stride
     step = 2 * _VAD_STRIDE
     for i in range(0, n - 1, step):
         val = pcm_chunk[i] | (pcm_chunk[i + 1] << 8)
         if val >= 32768:
-            val -= 65536          # 有符号转换
+            val -= 65536  # 有符号转换
         energy += val if val >= 0 else -val
-        count  += 1
+        count += 1
     if count == 0:
         return 0
     return energy // count
@@ -347,6 +360,10 @@ def _is_silence(pcm_chunk, threshold=_VAD_ENERGY_THRESHOLD):
     if len(pcm_chunk) < 2:
         return True
     return _frame_energy(pcm_chunk) < threshold
+
+
+def _mic_tls_is_verified(cafile, cert_reqs) -> bool:
+    return cert_reqs == 2 and cafile is not None and cafile != ""
 
 
 class XfyunASR:
@@ -385,7 +402,7 @@ class XfyunASR:
         _api_secret  (str): API Secret (raw string from platform; do NOT Base64-decode).
         _sample_rate (int): Audio sample rate, 8000 or 16000.
         _accent      (str): Accent, default "mandarin".
-        _eos         (int): Silence-to-stop threshold in ms, default 6000.
+        _eos         (int): Silence-to-stop threshold in ms, default 800.
         _ln          (str): Language range, e.g. "zh|en", None for auto-detect.
         _ws          (_WsClient): Internal WebSocket client instance.
 
@@ -398,9 +415,18 @@ class XfyunASR:
         - Audio format: 16-bit signed PCM, mono, sample rate matching init parameter.
     """
 
-    def __init__(self, app_id: str, api_key: str, api_secret: str,
-                 sample_rate: int = 16000, accent: str = "mandarin",
-                 eos: int = _DEFAULT_EOS, ln: str = None) -> None:
+    def __init__(
+        self,
+        app_id: str,
+        api_key: str,
+        api_secret: str,
+        sample_rate: int = 16000,
+        accent: str = "mandarin",
+        eos: int = _DEFAULT_EOS,
+        ln: str = None,
+        cafile: str = None,
+        cert_reqs: int = 0,
+    ) -> None:
         """
         初始化 ASR 驱动，保存鉴权参数与识别配置。
 
@@ -427,8 +453,10 @@ class XfyunASR:
             api_secret  (str): API Secret (raw string from platform).
             sample_rate (int): Audio sample rate, 8000 or 16000, default 16000.
             accent      (str): Accent, default "mandarin".
-            eos         (int): Silence-to-stop threshold in ms, default 6000.
+            eos         (int): Silence-to-stop threshold in ms, default 800.
             ln          (str): Language range, e.g. "zh|en", None for auto-detect.
+            cafile      (str): CA certificate file path; use with cert_reqs=2 to verify the WSS peer.
+            cert_reqs   (int): TLS certificate verification mode, 0=none, 2=required. Default 0 for compatibility.
 
         Raises:
             ValueError: Any string param is empty, sample_rate not 8000/16000, or eos out of range.
@@ -479,21 +507,25 @@ class XfyunASR:
             raise ValueError("eos must be between 300 and 60000, got {}".format(eos))
 
         # 保存鉴权参数
-        self._app_id      = app_id
-        self._api_key     = api_key
-        self._api_secret  = api_secret
+        self._app_id = app_id
+        self._api_key = api_key
+        self._api_secret = api_secret
         # 保存识别配置
         self._sample_rate = sample_rate
-        self._accent      = accent
-        self._eos         = eos
-        self._ln          = ln                    # None = auto-detect
+        self._accent = accent
+        self._eos = eos
+        self._ln = ln  # None = auto-detect
+        self._cafile = cafile
+        self._cert_reqs = cert_reqs
         # 创建 WebSocket 客户端实例（每次 recognize 调用时重建，此处仅占位）
-        self._ws          = _WsClient(ms_delay_for_read=5)
+        self._ws = _WsClient(ms_delay_for_read=5)
         # 接收任务的共享状态
-        self._result      = ""     # 已拼接的识别文本
-        self._final       = False  # 服务端是否已返回 status==2
-        self._err         = None   # 接收侧的业务错误信息
-        self._connected   = False  # connect() 是否已完成握手
+        self._result = ""  # 已拼接的识别文本
+        self._final = False  # 服务端是否已返回 status==2
+        self._err = None  # 接收侧的业务错误信息
+        self._connected = False  # connect() 是否已完成握手
+        self._conn_cafile = None
+        self._conn_cert_reqs = 0
 
     def _build_auth_url(self) -> str:
         """
@@ -516,17 +548,14 @@ class XfyunASR:
         sig_origin = "host: {}\ndate: {}\nGET {} HTTP/1.1".format(_HOST, date, _PATH)
 
         # API Secret 直接以 UTF-8 字节作为 HMAC 密钥（不得 Base64 解码）
-        secret_bytes = self._api_secret.encode('utf-8')
-        sig_bytes    = _hmac_sha256(secret_bytes, sig_origin.encode('utf-8'))
+        secret_bytes = self._api_secret.encode("utf-8")
+        sig_bytes = _hmac_sha256(secret_bytes, sig_origin.encode("utf-8"))
         # Base64 编码签名摘要
-        sig_b64      = binascii.b2a_base64(sig_bytes).decode('utf-8').strip()
+        sig_b64 = binascii.b2a_base64(sig_bytes).decode("utf-8").strip()
 
         # 拼接 authorization 原文并 Base64 编码
-        auth_origin = (
-            'api_key="{}", algorithm="hmac-sha256", '
-            'headers="host date request-line", signature="{}"'
-        ).format(self._api_key, sig_b64)
-        auth_b64 = binascii.b2a_base64(auth_origin.encode('utf-8')).decode('utf-8').strip()
+        auth_origin = ('api_key="{}", algorithm="hmac-sha256", ' 'headers="host date request-line", signature="{}"').format(self._api_key, sig_b64)
+        auth_b64 = binascii.b2a_base64(auth_origin.encode("utf-8")).decode("utf-8").strip()
 
         # 拼接最终 WSS URL，三个参数均需 URL 百分号编码
         return "{}?authorization={}&date={}&host={}".format(
@@ -551,14 +580,14 @@ class XfyunASR:
             dict: Recognition parameter dictionary.
         """
         params = {
-            "domain":   "slm",       # 固定值：大模型多语种语音识别
-            "language": "mul_cn",    # 固定值：多语种
-            "accent":   self._accent,
-            "eos":      self._eos,
+            "domain": "slm",  # 固定值：大模型多语种语音识别
+            "language": "mul_cn",  # 固定值：多语种
+            "accent": self._accent,
+            "eos": self._eos,
             "result": {
                 "encoding": "utf8",
                 "compress": "raw",
-                "format":   "json",
+                "format": "json",
             },
         }
         # 如果指定了语种范围，加入 ln 参数（如 "zh|en|ja"）
@@ -589,24 +618,28 @@ class XfyunASR:
         Returns:
             str: JSON string ready to send.
         """
-        return json.dumps({
-            "header": {
-                "app_id": self._app_id,
-                "status": status,
-            },
-            "parameter": {"iat": self._iat_params()},
-            "payload": {
-                "audio": {
-                    "encoding":    "raw",
-                    "sample_rate": self._sample_rate,
-                    "channels":    1,
-                    "bit_depth":   16,
-                    "seq":         1,
-                    "status":      status,
-                    "audio":       b64encode_str(pcm) if pcm else "",
+        if status not in (0, 2):
+            raise ValueError("status must be 0 or 2")
+        return json.dumps(
+            {
+                "header": {
+                    "app_id": self._app_id,
+                    "status": status,
                 },
-            },
-        })
+                "parameter": {"iat": self._iat_params()},
+                "payload": {
+                    "audio": {
+                        "encoding": "raw",
+                        "sample_rate": self._sample_rate,
+                        "channels": 1,
+                        "bit_depth": 16,
+                        "seq": 1,
+                        "status": status,
+                        "audio": b64encode_str(pcm) if pcm else "",
+                    },
+                },
+            }
+        )
 
     def _next_frame(self, pcm: bytes, status: int) -> str:
         """
@@ -636,17 +669,23 @@ class XfyunASR:
         Returns:
             str: JSON string ready to send.
         """
+        if status not in (1, 2):
+            raise ValueError("status must be 1 or 2")
         return (
-            '{"header":{"app_id":"' + self._app_id
-            + '","status":' + str(status)
+            '{"header":{"app_id":"'
+            + self._app_id
+            + '","status":'
+            + str(status)
             + '},"payload":{"audio":{"encoding":"raw","sample_rate":'
             + str(self._sample_rate)
-            + ',"status":' + str(status)
-            + ',"audio":"' + (b64encode_str(pcm) if pcm else "")
+            + ',"status":'
+            + str(status)
+            + ',"audio":"'
+            + (b64encode_str(pcm) if pcm else "")
             + '"}}}'
         )
 
-    async def connect(self, timeout: int = 10) -> bool:
+    async def connect(self, timeout: int = 10, cafile: str = None, cert_reqs: int = None) -> bool:
         """
         提前完成 WebSocket 握手，把 TLS 建连开销挪出识别时段。
 
@@ -669,21 +708,32 @@ class XfyunASR:
         once recording starts.
 
         Args:
-            timeout (int): Handshake timeout in seconds, default 10.
+            timeout   (int): Handshake timeout in seconds, default 10.
+            cafile    (str): CA certificate path for this connection; None uses the instance setting.
+            cert_reqs (int): TLS verification mode for this connection; None uses the instance setting.
 
         Returns:
             bool: True on success, False on failure.
         """
         # 复位上一轮的共享状态
-        self._result    = ""
-        self._final     = False
-        self._err       = None
+        self._result = ""
+        self._final = False
+        self._err = None
         self._connected = False
+        self._conn_cafile = None
+        self._conn_cert_reqs = 0
 
         url = self._build_auth_url()
         self._ws = _WsClient(ms_delay_for_read=5)
+        if cert_reqs is None:
+            cert_reqs = self._cert_reqs
+        if cafile is None:
+            cafile = self._cafile
         try:
-            await asyncio.wait_for(self._ws.handshake(url, cert_reqs=0), timeout)
+            await asyncio.wait_for(
+                self._ws.handshake(url, cafile=cafile, cert_reqs=cert_reqs),
+                timeout,
+            )
         except Exception as e:
             print("[ASR] Handshake failed:", e)
             try:
@@ -692,6 +742,8 @@ class XfyunASR:
                 pass
             return False
         self._connected = True
+        self._conn_cafile = cafile
+        self._conn_cert_reqs = cert_reqs
         return True
 
     def _handle_message(self, msg) -> bool:
@@ -714,6 +766,8 @@ class XfyunASR:
         Returns:
             bool: True when recognition is finished (status==2 or error).
         """
+        if msg is None:
+            raise ValueError("msg cannot be None")
         # MicroPython 的 json.loads 对 true/false/null 处理有缺陷，先替换为数字
         safe = msg.replace(":true", ":1").replace(":false", ":0").replace(":null", ":0")
         try:
@@ -723,7 +777,7 @@ class XfyunASR:
             return False
 
         header = resp.get("header", {})
-        code   = header.get("code", -1)
+        code = header.get("code", -1)
         if code != 0:
             self._err = "code=%s msg=%s" % (code, header.get("message", ""))
             print("[ASR] API error,", self._err)
@@ -735,7 +789,7 @@ class XfyunASR:
             text_b64 = payload.get("result", {}).get("text", "")
             if text_b64:
                 try:
-                    decoded = b64decode(text_b64).decode('utf-8')
+                    decoded = b64decode(text_b64).decode("utf-8")
                     self._result += _extract_w_fields(decoded)
                 except Exception as e:
                     print("[ASR] decode error:", e, "b64[:40]:", text_b64[:40])
@@ -825,23 +879,14 @@ class XfyunASR:
         Returns:
             int: Number of frames actually sent.
         """
-        sent      = 0
-        first     = True
-        silence   = 0
+        sent = 0
+        first = True
         next_send = time.ticks_ms()
 
         with open(filepath, "rb") as f:
             while True:
                 buf = f.read(_FRAME_SIZE)
-                eof = (len(buf) < _FRAME_SIZE)
-
-                # ── 本地 VAD：连续静音则提前关流，不等服务端判停 ──
-                if sent >= _VAD_NOISE_FRAMES and _is_silence(buf):
-                    silence += 1
-                else:
-                    silence = 0
-                if silence >= _VAD_SILENCE_FRAMES and not first:
-                    eof = True
+                eof = len(buf) < _FRAME_SIZE
 
                 if first:
                     status = 2 if eof else 0
@@ -849,8 +894,8 @@ class XfyunASR:
                 else:
                     status = 2 if eof else 1
                     await self._ws.send(self._next_frame(buf, status))
-                sent  += 1
-                first  = False
+                sent += 1
+                first = False
 
                 if eof:
                     break
@@ -869,8 +914,7 @@ class XfyunASR:
 
         return sent
 
-    async def recognize(self, filepath: str, pace_ms: int = 0,
-                        timeout_ms: int = 15000) -> str:
+    async def recognize(self, filepath: str, pace_ms: int = 0, timeout_ms: int = 15000) -> str:
         """
         识别 PCM 音频文件，返回识别文字。发送与接收并发进行。
 
@@ -931,18 +975,19 @@ class XfyunASR:
             if not await self.connect():
                 return ""
 
-        t0        = time.ticks_ms()
+        t0 = time.ticks_ms()
         recv_task = asyncio.create_task(self._recv_loop())
         try:
             sent = await self._send_file(filepath, pace_ms)
-            print("[ASR] sent %d frames in %d ms" %
-                  (sent, time.ticks_diff(time.ticks_ms(), t0)))
+            print("[ASR] sent %d frames in %d ms" % (sent, time.ticks_diff(time.ticks_ms(), t0)))
             await self._await_final(recv_task, timeout_ms)
         except Exception as e:
             print("[ASR] send error:", e)
             recv_task.cancel()
         finally:
             self._connected = False
+            self._conn_cafile = None
+            self._conn_cert_reqs = 0
             await self._ws.close()
 
         print("[ASR] total %d ms" % time.ticks_diff(time.ticks_ms(), t0))
@@ -971,10 +1016,14 @@ class XfyunASR:
         """
         return await self.recognize(filepath)
 
-    async def recognize_mic(self, codec, max_ms: int = 15000,
-                            start_timeout_ms: int = 6000,
-                            timeout_ms: int = 8000,
-                            on_state=None) -> str:
+    async def recognize_mic(
+        self,
+        codec,
+        max_ms: int = 15000,
+        start_timeout_ms: int = 6000,
+        timeout_ms: int = 8000,
+        on_state=None,
+    ) -> str:
         """
         边录边识别：直接从麦克风流式送帧，用户一停口就出结果。
 
@@ -1039,10 +1088,18 @@ class XfyunASR:
         if codec is None:
             raise ValueError("codec cannot be None")
 
+        if self._connected:
+            if not _mic_tls_is_verified(self._conn_cafile, self._conn_cert_reqs):
+                raise ValueError("recognize_mic requires TLS peer verification; " "configure cafile and cert_reqs=2")
+        elif not _mic_tls_is_verified(self._cafile, self._cert_reqs):
+            raise ValueError("recognize_mic requires TLS peer verification; " "configure cafile and cert_reqs=2")
+
         # 未预先握手则现场建连
         if not self._connected:
             if not await self.connect():
                 return ""
+            if not _mic_tls_is_verified(self._conn_cafile, self._conn_cert_reqs):
+                raise ValueError("recognize_mic requires TLS peer verification; " "configure cafile and cert_reqs=2")
 
         # 丢掉麦克风里的积压帧。调用方通常刚放完 TTS，那段播音会经
         # AEC 残留漏进 mic 缓冲；不丢的话前 8 帧底噪估计就被它污染，
@@ -1056,24 +1113,24 @@ class XfyunASR:
         if on_state:
             on_state("listening")
 
-        t_start   = time.ticks_ms()
+        t_start = time.ticks_ms()
         recv_task = asyncio.create_task(self._recv_loop())
 
         # ── 状态机变量 ──
-        pending   = []      # 累积到 _FRAME_SIZE 的待发缓冲
+        pending = []  # 累积到 _FRAME_SIZE 的待发缓冲
         pending_n = 0
-        preroll   = []      # 开口前的前置缓冲（滚动保留）
+        preroll = []  # 开口前的前置缓冲（滚动保留）
         preroll_n = 0
-        preroll_max = self._sample_rate * 2 * 200 // 1000   # 200ms
+        preroll_max = self._sample_rate * 2 * 200 // 1000  # 200ms
         noise_sum = 0
         noise_cnt = 0
         threshold = _VAD_ENERGY_THRESHOLD
-        voiced    = 0       # 连续有声帧计数
-        silence   = 0       # 连续静音帧计数
-        speaking  = False   # 是否已确认开口
-        first     = True    # 下一帧是否为首帧
-        sent      = 0
-        t_speech  = 0       # 开口时刻
+        voiced = 0  # 连续有声帧计数
+        silence = 0  # 连续静音帧计数
+        speaking = False  # 是否已确认开口
+        first = True  # 下一帧是否为首帧
+        sent = 0
+        t_speech = 0  # 开口时刻
 
         try:
             while True:
@@ -1105,10 +1162,8 @@ class XfyunASR:
                         noise_cnt += 1
                         if noise_cnt == _VAD_NOISE_FRAMES:
                             floor = noise_sum // _VAD_NOISE_FRAMES
-                            threshold = max(_VAD_ENERGY_THRESHOLD,
-                                            floor * _VAD_NOISE_MULT)
-                            print("[ASR] noise floor=%d threshold=%d" %
-                                  (floor, threshold))
+                            threshold = max(_VAD_ENERGY_THRESHOLD, floor * _VAD_NOISE_MULT)
+                            print("[ASR] noise floor=%d threshold=%d" % (floor, threshold))
                     else:
                         if energy >= threshold:
                             voiced += 1
@@ -1124,7 +1179,7 @@ class XfyunASR:
                             for p in preroll:
                                 pending.append(p)
                                 pending_n += len(p)
-                            preroll   = []
+                            preroll = []
                             preroll_n = 0
 
                     # 滚动保留最近 200ms 作为前置缓冲
@@ -1148,7 +1203,7 @@ class XfyunASR:
                 while pending_n >= _FRAME_SIZE:
                     blob = b"".join(pending)
                     frame, rest = blob[:_FRAME_SIZE], blob[_FRAME_SIZE:]
-                    pending   = [rest] if rest else []
+                    pending = [rest] if rest else []
                     pending_n = len(rest)
                     if first:
                         await self._ws.send(self._first_frame(frame, 0))
@@ -1180,22 +1235,23 @@ class XfyunASR:
             sent += 1
 
             t_eos = time.ticks_ms()
-            print("[ASR] EOS after %d frames, speech %d ms" %
-                  (sent, time.ticks_diff(t_eos, t_speech) if t_speech else 0))
+            print("[ASR] EOS after %d frames, speech %d ms" % (sent, time.ticks_diff(t_eos, t_speech) if t_speech else 0))
             await self._await_final(recv_task, timeout_ms)
-            print("[ASR] EOS -> result: %d ms" %
-                  time.ticks_diff(time.ticks_ms(), t_eos))
+            print("[ASR] EOS -> result: %d ms" % time.ticks_diff(time.ticks_ms(), t_eos))
 
         except Exception as e:
             print("[ASR] mic stream error:", e)
             recv_task.cancel()
         finally:
             self._connected = False
+            self._conn_cafile = None
+            self._conn_cert_reqs = 0
             await self._ws.close()
             if on_state:
                 on_state("done")
 
         return self._result
+
 
 # ======================================== 初始化配置 ===========================================
 

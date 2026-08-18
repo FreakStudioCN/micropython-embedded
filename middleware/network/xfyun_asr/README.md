@@ -182,7 +182,9 @@ asr = XfyunASR(
     app_id      = "your_appid",
     api_key     = "your_api_key",
     api_secret  = "your_api_secret",  # 平台提供的原始字符串，勿 Base64 解码
-    sample_rate = 8000,               # 须与音频文件采样率一致
+    sample_rate = 16000,              # 须与音频文件采样率一致
+    cafile      = "ca.pem",
+    cert_reqs   = 2,
 )
 ```
 
@@ -215,6 +217,10 @@ print(text)
 | `sample_rate` | int | `16000` | 音频采样率，`8000` 或 `16000` |
 | `accent` | str | `"mandarin"` | 口音/方言（如 `"cantonese"`、`"sichuan"`） |
 | `eos` | int | `800` | 静音停止阈值（毫秒，范围 500~60000） |
+| `cafile` | str | `None` | CA 证书文件路径；配合 `cert_reqs=2` 验证 WSS 服务端证书 |
+| `cert_reqs` | int | `0` | TLS 证书验证模式；`0` 为不验证，`2` 为必须验证 |
+
+> `recognize_mic()` 会发送实时麦克风隐私音频，因此强制要求 WSS peer verification：必须提供 `cafile` 且设置 `cert_reqs=2`。预录 PCM 文件识别 `recognize(filepath)` 保持兼容行为，可继续按实例或 `connect()` 的 TLS 配置运行。
 
 ---
 
@@ -281,7 +287,7 @@ ASR result: 大家好，一块吃饭吧，hello。
 
 2. **API Secret 不得 Base64 解码**：平台下发的 API Secret 字符串应直接以 UTF-8 编码作为 HMAC 密钥。Base64 解码后使用会导致签名错误（401）。
 
-3. **采样率必须一致**：`sample_rate` 参数须与 PCM 文件的实际采样率严格匹配。若使用 `xfyun_tts` 生成的 `output.pcm`，TTS 默认采样率为 8000 Hz，ASR 也应设置 `sample_rate=8000`。
+3. **采样率必须一致**：`sample_rate` 参数须与 PCM 文件的实际采样率严格匹配。若使用当前新版 `xfyun_tts` 生成的 `output.pcm` 且没有覆盖采样率，TTS 默认 `audio_sample_rate` 为 16000 Hz，ASR 也应设置 `sample_rate=16000`。
 
 4. **TTS 与 ASR 需分别开通服务**：讯飞控制台中，语音合成（TTS）和中英识别大模型（ASR）是独立的服务，需分别在对应产品页面获取免费额度或购买套餐，同一 APPID 可同时开通两项服务。
 
@@ -292,7 +298,7 @@ ASR result: 大家好，一块吃饭吧，hello。
    ffplay -f s16le -ar 8000 -ac 1 output.pcm
    ```
 
-7. **`wss://` 首次 TLS 握手较慢**：Pico 2W 使用软件 TLS（lwIP），首次握手耗时约 2~4 秒，属正常现象。
+7. **`wss://` 首次 TLS 握手较慢**：Pico 2W 使用软件 TLS（lwIP），首次握手耗时约 2~4 秒，属正常现象。默认 `cert_reqs=0` 是兼容资源受限固件的显式不安全配置，不验证服务端证书；如固件支持 CA 校验，请提供 CA 文件并设置 `cert_reqs=2`，例如 `asr = XfyunASR(..., cafile="ca.pem", cert_reqs=2)` 或 `await asr.connect(cafile="ca.pem", cert_reqs=2)`。`recognize_mic()` 会发送实时麦克风隐私音频，调用前必须启用上述证书验证，否则会直接抛出 `ValueError` 且不会建立实时麦克风连接。
 
 ---
 

@@ -24,15 +24,28 @@ __author__ = "leeqingsui"
 __license__ = "MIT"
 __platform__ = "MicroPython v1.23"
 
-_HOST    = "cbm01.cn-huabei-1.xf-yun.com"
-_PATH    = "/v1/private/mcd9m97e6"
+_HOST = "cbm01.cn-huabei-1.xf-yun.com"
+_PATH = "/v1/private/mcd9m97e6"
 _WSS_URL = "wss://cbm01.cn-huabei-1.xf-yun.com/v1/private/mcd9m97e6"
 
 _WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-_MONTHS   = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
-             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_MONTHS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+)
 
 # ======================================== 功能函数 ============================================
+
 
 def _rfc1123_now():
     """
@@ -49,18 +62,19 @@ def _rfc1123_now():
     """
     try:
         import timesync
+
         t = timesync.utc_struct()
     except Exception:
-        t = time.gmtime()          # timesync 不可用时退回原行为
+        t = time.gmtime()  # timesync 不可用时退回原行为
 
     return "{wd}, {d:02d} {mon} {y} {h:02d}:{m:02d}:{s:02d} GMT".format(
-        wd  = _WEEKDAYS[t[6]],
-        d   = t[2],
-        mon = _MONTHS[t[1] - 1],
-        y   = t[0],
-        h   = t[3],
-        m   = t[4],
-        s   = t[5],
+        wd=_WEEKDAYS[t[6]],
+        d=t[2],
+        mon=_MONTHS[t[1] - 1],
+        y=t[0],
+        h=t[3],
+        m=t[4],
+        s=t[5],
     )
 
 
@@ -78,7 +92,7 @@ def _hmac_sha256(key, msg):
     block_size = 64
     if len(key) > block_size:
         key = hashlib.sha256(key).digest()
-    key = key + b'\x00' * (block_size - len(key))
+    key = key + b"\x00" * (block_size - len(key))
     o_key_pad = bytes(b ^ 0x5C for b in key)
     i_key_pad = bytes(b ^ 0x36 for b in key)
     inner = hashlib.sha256(i_key_pad + msg).digest()
@@ -95,17 +109,15 @@ def _url_encode(s):
     Returns:
         str: URL 编码后的字符串。
     """
-    _safe = frozenset(
-        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~'
-    )
+    _safe = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")
     out = []
     for ch in s:
         if ch in _safe:
             out.append(ch)
         else:
-            for byte in ch.encode('utf-8'):
-                out.append('%{:02X}'.format(byte))
-    return ''.join(out)
+            for byte in ch.encode("utf-8"):
+                out.append("%{:02X}".format(byte))
+    return "".join(out)
 
 
 def _wav_header(sample_rate, channels, bits, data_size):
@@ -121,15 +133,23 @@ def _wav_header(sample_rate, channels, bits, data_size):
     Returns:
         bytes: 44 字节 WAV 文件头。
     """
-    byte_rate   = sample_rate * channels * bits // 8
+    byte_rate = sample_rate * channels * bits // 8
     block_align = channels * bits // 8
     return struct.pack(
-        '<4sI4s4sIHHIIHH4sI',
-        b'RIFF', data_size + 36,
-        b'WAVE',
-        b'fmt ', 16, 1, channels, sample_rate,
-        byte_rate, block_align, bits,
-        b'data', data_size,
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF",
+        data_size + 36,
+        b"WAVE",
+        b"fmt ",
+        16,
+        1,
+        channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        bits,
+        b"data",
+        data_size,
     )
 
 
@@ -158,32 +178,34 @@ class _WsClient(AsyncWebsocketClient):
         Raises:
             ValueError: 协议不是 ws 或 wss 时抛出。
         """
-        if uri.startswith('wss://'):
-            protocol     = 'wss'
-            rest         = uri[6:]
+        if uri is None:
+            raise ValueError("uri cannot be None")
+        if uri.startswith("wss://"):
+            protocol = "wss"
+            rest = uri[6:]
             default_port = 443
-        elif uri.startswith('ws://'):
-            protocol     = 'ws'
-            rest         = uri[5:]
+        elif uri.startswith("ws://"):
+            protocol = "ws"
+            rest = uri[5:]
             default_port = 80
         else:
-            raise ValueError('Scheme not ws or wss')
+            raise ValueError("Scheme not ws or wss")
 
-        slash = rest.find('/')
+        slash = rest.find("/")
         if slash == -1:
             hostpart = rest
-            path     = '/'
+            path = "/"
         else:
             hostpart = rest[:slash]
-            path     = rest[slash:]
+            path = rest[slash:]
 
-        colon = hostpart.find(':')
+        colon = hostpart.find(":")
         if colon == -1:
             hostname = hostpart
-            port     = default_port
+            port = default_port
         else:
             hostname = hostpart[:colon]
-            port     = int(hostpart[colon + 1:])
+            port = int(hostpart[colon + 1 :])
 
         return URI(protocol, hostname, port, path)
 
@@ -249,14 +271,29 @@ class XfyunTTS:
     AUF_8K = "audio/L16;rate=8000"
     AUF_16K = "audio/L16;rate=16000"
 
-    def __init__(self, app_id, api_key, api_secret,
-                 vcn="x6_lingfeiyi_pro",
-                 speed=50, volume=50, pitch=50,
-                 bgs=0, reg=0, rdn=0, rhy=0,
-                 oral_level="mid",
-                 audio_encoding="raw", audio_sample_rate=16000,
-                 audio_channels=1, audio_bit_depth=16,
-                 debug=False, **kwargs):
+    def __init__(
+        self,
+        app_id: str,
+        api_key,
+        api_secret,
+        vcn="x6_lingfeiyi_pro",
+        speed=50,
+        volume=50,
+        pitch=50,
+        bgs=0,
+        reg=0,
+        rdn=0,
+        rhy=0,
+        oral_level="mid",
+        audio_encoding="raw",
+        audio_sample_rate=16000,
+        audio_channels=1,
+        audio_bit_depth=16,
+        debug=False,
+        cafile=None,
+        cert_reqs=0,
+        **kwargs
+    ):
         """
         初始化超拟人 TTS 驱动，保存鉴权参数与合成配置。
 
@@ -299,6 +336,8 @@ class XfyunTTS:
             audio_sample_rate   (int): Sample rate, default 16000.
             audio_channels      (int): Channels, default 1.
             audio_bit_depth     (int): Bit depth, default 16.
+            cafile              (str): CA certificate file path; use with cert_reqs=2 to verify the WSS peer.
+            cert_reqs           (int): TLS certificate verification mode, 0=none, 2=required. Default 0 for compatibility.
         """
         if app_id is None:
             raise ValueError("app_id cannot be None")
@@ -323,58 +362,66 @@ class XfyunTTS:
             elif isinstance(auf, str) and "rate=16000" in auf:
                 audio_sample_rate = 16000
 
-        self._app_id     = app_id
-        self._api_key    = api_key
+        self._app_id = app_id
+        self._api_key = api_key
         self._api_secret = api_secret
         # TTS 参数
-        self._vcn        = vcn
-        self._speed      = speed
-        self._volume     = volume
-        self._pitch      = pitch
-        self._bgs        = bgs
-        self._reg        = reg
-        self._rdn        = rdn
-        self._rhy        = rhy
+        self._vcn = vcn
+        self._speed = speed
+        self._volume = volume
+        self._pitch = pitch
+        self._bgs = bgs
+        self._reg = reg
+        self._rdn = rdn
+        self._rhy = rhy
         # 口语化参数
         self._oral_level = oral_level
         # 音频格式
-        self._audio_cfg  = {
-            "encoding":    audio_encoding,
+        self._audio_cfg = {
+            "encoding": audio_encoding,
             "sample_rate": audio_sample_rate,
-            "channels":    audio_channels,
-            "bit_depth":   audio_bit_depth,
-            "frame_size":  0,
+            "channels": audio_channels,
+            "bit_depth": audio_bit_depth,
+            "frame_size": 0,
         }
         self._debug = debug
+        self._cafile = cafile
+        self._cert_reqs = cert_reqs
         self._ws = _WsClient(ms_delay_for_read=5)
 
-    def set_voice(self, vcn) -> 'XfyunTTS':
+    def set_voice(self, vcn) -> "XfyunTTS":
+        if vcn is None:
+            raise ValueError("vcn cannot be None")
         self._vcn = vcn
         return self
 
-    def set_speed(self, speed) -> 'XfyunTTS':
-        if not 0 <= speed <= 100:
+    def set_speed(self, speed) -> "XfyunTTS":
+        if speed < 0 or speed > 100:
             raise ValueError("speed must be in [0, 100]")
         self._speed = speed
         return self
 
-    def set_volume(self, volume) -> 'XfyunTTS':
-        if not 0 <= volume <= 100:
+    def set_volume(self, volume) -> "XfyunTTS":
+        if volume < 0 or volume > 100:
             raise ValueError("volume must be in [0, 100]")
         self._volume = volume
         return self
 
-    def set_pitch(self, pitch) -> 'XfyunTTS':
-        if not 0 <= pitch <= 100:
+    def set_pitch(self, pitch) -> "XfyunTTS":
+        if pitch < 0 or pitch > 100:
             raise ValueError("pitch must be in [0, 100]")
         self._pitch = pitch
         return self
 
-    def set_background_sound(self, enabled) -> 'XfyunTTS':
+    def set_background_sound(self, enabled) -> "XfyunTTS":
+        if type(enabled) is not bool:
+            raise TypeError("enabled must be bool")
         self._bgs = 1 if enabled else 0
         return self
 
-    def set_audio_encoding(self, aue, sfl=None) -> 'XfyunTTS':
+    def set_audio_encoding(self, aue, sfl=None) -> "XfyunTTS":
+        if aue is None:
+            raise ValueError("aue cannot be None")
         self._audio_cfg["encoding"] = aue
         if sfl is not None:
             self._audio_cfg["sfl"] = sfl
@@ -382,29 +429,33 @@ class XfyunTTS:
             del self._audio_cfg["sfl"]
         return self
 
-    def set_sample_rate(self, rate) -> 'XfyunTTS':
+    def set_sample_rate(self, rate) -> "XfyunTTS":
         if rate not in (8000, 16000):
             raise ValueError("rate must be 8000 or 16000")
         self._audio_cfg["sample_rate"] = rate
         return self
 
-    def set_text_encoding(self, tte) -> 'XfyunTTS':
+    def set_text_encoding(self, tte) -> "XfyunTTS":
+        if tte is None:
+            raise ValueError("tte cannot be None")
         self._audio_cfg["text_encoding"] = tte
         return self
 
-    def set_english_pronunciation(self, reg) -> 'XfyunTTS':
+    def set_english_pronunciation(self, reg) -> "XfyunTTS":
         if str(reg) not in ("0", "1", "2"):
             raise ValueError("reg must be '0', '1', or '2'")
         self._reg = reg
         return self
 
-    def set_digit_pronunciation(self, rdn) -> 'XfyunTTS':
+    def set_digit_pronunciation(self, rdn) -> "XfyunTTS":
         if str(rdn) not in ("0", "1", "2", "3"):
             raise ValueError("rdn must be '0', '1', '2', or '3'")
         self._rdn = rdn
         return self
 
     def _log(self, msg):
+        if msg is None:
+            raise ValueError("msg cannot be None")
         if self._debug:
             print("[XfyunTTS]", msg)
 
@@ -420,15 +471,12 @@ class XfyunTTS:
         # 签名原文：host + date + request-line
         sig_origin = "host: {}\ndate: {}\nGET {} HTTP/1.1".format(_HOST, date, _PATH)
 
-        secret_bytes = self._api_secret.encode('utf-8')
-        sig_bytes    = _hmac_sha256(secret_bytes, sig_origin.encode('utf-8'))
-        sig_b64      = binascii.b2a_base64(sig_bytes).decode('utf-8').strip()
+        secret_bytes = self._api_secret.encode("utf-8")
+        sig_bytes = _hmac_sha256(secret_bytes, sig_origin.encode("utf-8"))
+        sig_b64 = binascii.b2a_base64(sig_bytes).decode("utf-8").strip()
 
-        auth_origin = (
-            'api_key="{}", algorithm="hmac-sha256", '
-            'headers="host date request-line", signature="{}"'
-        ).format(self._api_key, sig_b64)
-        auth_b64 = binascii.b2a_base64(auth_origin.encode('utf-8')).decode('utf-8').strip()
+        auth_origin = ('api_key="{}", algorithm="hmac-sha256", ' 'headers="host date request-line", signature="{}"').format(self._api_key, sig_b64)
+        auth_b64 = binascii.b2a_base64(auth_origin.encode("utf-8")).decode("utf-8").strip()
 
         return "{}?authorization={}&date={}&host={}".format(
             _WSS_URL,
@@ -451,17 +499,19 @@ class XfyunTTS:
         Returns:
             str: JSON 格式的请求字符串。
         """
+        if text is None:
+            raise ValueError("text cannot be None")
         # 合并 TTS 参数：实例默认值 + 调用时覆盖
         tts_params = {
-            "vcn":    vcn if vcn else self._vcn,
-            "speed":  self._speed,
+            "vcn": vcn if vcn else self._vcn,
+            "speed": self._speed,
             "volume": self._volume,
-            "pitch":  self._pitch,
-            "bgs":    self._bgs,
-            "reg":    self._reg,
-            "rdn":    self._rdn,
-            "rhy":    self._rhy,
-            "audio":  dict(self._audio_cfg),
+            "pitch": self._pitch,
+            "bgs": self._bgs,
+            "reg": self._reg,
+            "rdn": self._rdn,
+            "rhy": self._rhy,
+            "audio": dict(self._audio_cfg),
         }
         # 调用时覆盖 speed/volume/pitch/bgs/reg/rdn/rhy
         for k in ("speed", "volume", "pitch", "bgs", "reg", "rdn", "rhy"):
@@ -476,12 +526,12 @@ class XfyunTTS:
         oral_level = kwargs.get("oral_level", self._oral_level)
 
         # 文本需要 Base64 编码（API 要求）
-        text_b64 = b64encode_str(text.encode('utf-8'))
+        text_b64 = b64encode_str(text.encode("utf-8"))
 
         req = {
             "header": {
                 "app_id": self._app_id,
-                "status": 2,      # 一次性合成，直接传 2
+                "status": 2,  # 一次性合成，直接传 2
             },
             "parameter": {
                 "oral": {
@@ -493,10 +543,10 @@ class XfyunTTS:
                 "text": {
                     "encoding": "utf8",
                     "compress": "raw",
-                    "format":   "plain",
-                    "status":   2,
-                    "seq":      0,
-                    "text":     text_b64,       # Base64 编码后发送
+                    "format": "plain",
+                    "status": 2,
+                    "seq": 0,
+                    "text": text_b64,  # Base64 编码后发送
                 },
             },
         }
@@ -543,7 +593,7 @@ class XfyunTTS:
             pass
         self._ws = _WsClient(ms_delay_for_read=5)
         try:
-            await self._ws.handshake(url, cert_reqs=0)
+            await self._ws.handshake(url, cafile=self._cafile, cert_reqs=self._cert_reqs)
         except Exception as e:
             print("[TTS] Handshake failed:", e)
             return 0 if filepath else b""
@@ -553,10 +603,10 @@ class XfyunTTS:
         await self._ws.send(self._build_request(text, vcn=vcn, **kwargs))
 
         # 是否保存为 WAV
-        is_wav = filepath is not None and filepath.lower().endswith('.wav')
+        is_wav = filepath is not None and filepath.lower().endswith(".wav")
         sample_rate = self._audio_cfg.get("sample_rate", 16000)
 
-        total_bytes  = 0
+        total_bytes = 0
         audio_chunks = [] if filepath is None else None
         f = open(filepath, "wb") if filepath else None
         if is_wav and f:
@@ -579,8 +629,12 @@ class XfyunTTS:
 
                 code = resp.get("header", {}).get("code", -1)
                 if code != 0:
-                    print("[TTS] API error, code:", code,
-                          "msg:", resp.get("header", {}).get("message", ""))
+                    print(
+                        "[TTS] API error, code:",
+                        code,
+                        "msg:",
+                        resp.get("header", {}).get("message", ""),
+                    )
                     break
 
                 # 提取音频数据
@@ -641,7 +695,7 @@ class XfyunTTS:
             pass
         self._ws = _WsClient(ms_delay_for_read=5)
         try:
-            await self._ws.handshake(url, cert_reqs=0)
+            await self._ws.handshake(url, cafile=self._cafile, cert_reqs=self._cert_reqs)
         except Exception as e:
             print("[TTS] Handshake failed:", e)
             return 0
@@ -668,8 +722,12 @@ class XfyunTTS:
 
                 code = resp.get("header", {}).get("code", -1)
                 if code != 0:
-                    print("[TTS] API error, code:", code,
-                          "msg:", resp.get("header", {}).get("message", ""))
+                    print(
+                        "[TTS] API error, code:",
+                        code,
+                        "msg:",
+                        resp.get("header", {}).get("message", ""),
+                    )
                     break
 
                 # 提取音频数据，立即回调
@@ -690,8 +748,7 @@ class XfyunTTS:
 
         return total
 
-    async def synthesize_and_play(self, text, audio_out, amp_sd, rate=16000,
-                                   vcn=None, **kwargs):
+    async def synthesize_and_play(self, text, audio_out, amp_sd, rate=16000, vcn=None, **kwargs):
         """
         流式合成并直接播放到 I2S（保留兼容，适用于 I2S 外设）。
         注意：当前项目使用 machine.AudioCodec，请使用 synthesize() 替代。
@@ -730,6 +787,7 @@ class XfyunTTS:
 
         try:
             import os
+
             os.remove(tmp)
         except Exception:
             pass
