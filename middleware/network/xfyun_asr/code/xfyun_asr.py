@@ -362,8 +362,16 @@ def _is_silence(pcm_chunk, threshold=_VAD_ENERGY_THRESHOLD):
     return _frame_energy(pcm_chunk) < threshold
 
 
-def _mic_tls_is_verified(cafile, cert_reqs) -> bool:
-    return cert_reqs == 2 and cafile is not None and cafile != ""
+def _require_verified_tls(asr, operation) -> None:
+    if asr._connected:
+        cafile = asr._conn_cafile
+        cert_reqs = asr._conn_cert_reqs
+    else:
+        cafile = asr._cafile
+        cert_reqs = asr._cert_reqs
+
+    if cert_reqs != 2 or cafile is None or cafile == "":
+        raise ValueError(operation + " requires TLS peer verification; configure cafile and cert_reqs=2")
 
 
 class XfyunASR:
@@ -970,10 +978,13 @@ class XfyunASR:
         if len(filepath) == 0:
             raise ValueError("filepath cannot be empty")
 
+        _require_verified_tls(self, "recognize")
+
         # 未预先握手则现场建连
         if not self._connected:
             if not await self.connect():
                 return ""
+            _require_verified_tls(self, "recognize")
 
         t0 = time.ticks_ms()
         recv_task = asyncio.create_task(self._recv_loop())
@@ -1088,18 +1099,13 @@ class XfyunASR:
         if codec is None:
             raise ValueError("codec cannot be None")
 
-        if self._connected:
-            if not _mic_tls_is_verified(self._conn_cafile, self._conn_cert_reqs):
-                raise ValueError("recognize_mic requires TLS peer verification; " "configure cafile and cert_reqs=2")
-        elif not _mic_tls_is_verified(self._cafile, self._cert_reqs):
-            raise ValueError("recognize_mic requires TLS peer verification; " "configure cafile and cert_reqs=2")
+        _require_verified_tls(self, "recognize_mic")
 
         # 未预先握手则现场建连
         if not self._connected:
             if not await self.connect():
                 return ""
-            if not _mic_tls_is_verified(self._conn_cafile, self._conn_cert_reqs):
-                raise ValueError("recognize_mic requires TLS peer verification; " "configure cafile and cert_reqs=2")
+            _require_verified_tls(self, "recognize_mic")
 
         # 丢掉麦克风里的积压帧。调用方通常刚放完 TTS，那段播音会经
         # AEC 残留漏进 mic 缓冲；不丢的话前 8 帧底噪估计就被它污染，

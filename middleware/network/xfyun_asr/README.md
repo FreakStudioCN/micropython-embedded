@@ -220,7 +220,18 @@ print(text)
 | `cafile` | str | `None` | CA 证书文件路径；配合 `cert_reqs=2` 验证 WSS 服务端证书 |
 | `cert_reqs` | int | `0` | TLS 证书验证模式；`0` 为不验证，`2` 为必须验证 |
 
-> `recognize_mic()` 会发送实时麦克风隐私音频，因此强制要求 WSS peer verification：必须提供 `cafile` 且设置 `cert_reqs=2`。预录 PCM 文件识别 `recognize(filepath)` 保持兼容行为，可继续按实例或 `connect()` 的 TLS 配置运行。
+> `recognize(filepath)` 和 `recognize_mic()` 都会上传音频数据，因此强制要求 WSS peer verification：必须提供 `cafile` 且设置 `cert_reqs=2`。
+
+```python
+asr = XfyunASR(
+    ...,
+    cafile="ca.pem",
+    cert_reqs=2,
+)
+
+text = await asr.recognize("test.pcm")
+text = await asr.recognize_mic(codec)
+```
 
 ---
 
@@ -298,7 +309,7 @@ ASR result: 大家好，一块吃饭吧，hello。
    ffplay -f s16le -ar 8000 -ac 1 output.pcm
    ```
 
-7. **`wss://` 首次 TLS 握手较慢**：Pico 2W 使用软件 TLS（lwIP），首次握手耗时约 2~4 秒，属正常现象。默认 `cert_reqs=0` 是兼容资源受限固件的显式不安全配置，不验证服务端证书；如固件支持 CA 校验，请提供 CA 文件并设置 `cert_reqs=2`，例如 `asr = XfyunASR(..., cafile="ca.pem", cert_reqs=2)` 或 `await asr.connect(cafile="ca.pem", cert_reqs=2)`。`recognize_mic()` 会发送实时麦克风隐私音频，调用前必须启用上述证书验证，否则会直接抛出 `ValueError` 且不会建立实时麦克风连接。
+7. **`wss://` 首次 TLS 握手较慢**：Pico 2W 使用软件 TLS（lwIP），首次握手耗时约 2~4 秒，属正常现象。默认 `cert_reqs=0` 是兼容资源受限固件的显式不安全配置，不验证服务端证书；如固件支持 CA 校验，请提供 CA 文件并设置 `cert_reqs=2`，例如 `asr = XfyunASR(..., cafile="ca.pem", cert_reqs=2)` 或 `await asr.connect(cafile="ca.pem", cert_reqs=2)`。`recognize(filepath)` 和 `recognize_mic()` 调用前必须启用上述证书验证，否则会直接抛出 `ValueError` 且不会发送音频数据。
 
 ---
 
